@@ -1,21 +1,12 @@
 import { z } from "zod";
+import { NONE_VALUE, optionalText, optionalUuid } from "@/lib/form";
 
 /** Select で「セクションなし（単一登録）」を表す番兵。DB では section_id = null。 */
-export const NO_SECTION = "__none__";
-
-const optionalText = (max: number) =>
-  z
-    .string()
-    .trim()
-    .max(max)
-    .transform((value) => (value === "" ? null : value));
+export const NO_SECTION = NONE_VALUE;
 
 export const credentialFormSchema = z.object({
   id: z.uuid().optional(),
-  sectionId: z
-    .string()
-    .transform((value) => (value === NO_SECTION || value === "" ? null : value))
-    .pipe(z.uuid().nullable()),
+  sectionId: optionalUuid,
   name: z.string().trim().min(1, "名称は必須です").max(120),
   username: optionalText(200),
   password: optionalText(500),
@@ -61,10 +52,5 @@ export type SectionGroup = {
   credentials: CredentialItem[];
 };
 
-export type ActionState = {
-  status: "idle" | "success" | "error";
-  message?: string;
-  fieldErrors?: Record<string, string[]>;
-};
-
-export const idleState: ActionState = { status: "idle" };
+export { idleState } from "@/lib/form";
+export type { ActionState } from "@/lib/form";

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { CheckIcon, CopyIcon, EyeIcon, EyeOffIcon, LoaderCircleIcon } from "lucide-react";
 import { toast } from "sonner";
-import { revealSecret } from "@/features/credentials/actions";
+import { api } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 
 const AUTO_HIDE_MS = 30_000;
@@ -44,14 +44,14 @@ export function SecretCell({ credentialId, field, hasValue }: SecretCellProps) {
     }
 
     startTransition(async () => {
-      const result = await revealSecret(credentialId, field);
+      const result = await api.revealSecret(credentialId, field);
 
-      if ("error" in result) {
-        toast.error(result.error);
+      if (result.status === "error" || !result.data) {
+        toast.error(result.message ?? "取得に失敗しました。");
         return;
       }
 
-      setValue(result.value);
+      setValue(result.data.value);
       // 画面に出しっぱなしにしない
       hideTimer.current = setTimeout(() => setValue(null), AUTO_HIDE_MS);
     });
@@ -59,15 +59,15 @@ export function SecretCell({ credentialId, field, hasValue }: SecretCellProps) {
 
   const copy = () => {
     startTransition(async () => {
-      const result = await revealSecret(credentialId, field);
+      const result = await api.revealSecret(credentialId, field);
 
-      if ("error" in result) {
-        toast.error(result.error);
+      if (result.status === "error" || !result.data) {
+        toast.error(result.message ?? "取得に失敗しました。");
         return;
       }
 
       try {
-        await navigator.clipboard.writeText(result.value);
+        await navigator.clipboard.writeText(result.data.value);
         setCopied(true);
         copyTimer.current = setTimeout(() => setCopied(false), 1500);
       } catch {

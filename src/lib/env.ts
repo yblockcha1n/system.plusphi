@@ -83,6 +83,13 @@ export function findAdminUser(email: string): AdminUser | undefined {
   return env.ADMIN_USERS.find((user) => user.email === normalized);
 }
 
+/** 担当者 / 検収者の選択肢。ハッシュは絶対に含めない（クライアントへ渡すため）。 */
+export type UserOption = { email: string; name: string };
+
+export function listUsers(): UserOption[] {
+  return env.ADMIN_USERS.map(({ email, name }) => ({ email, name }));
+}
+
 /**
  * メールアドレスを表示名に解決する。ADMIN_USERS から外れた利用者が登録した行も
  * 残るため、その場合はメールアドレスをそのまま返す。

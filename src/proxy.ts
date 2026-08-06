@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 
 const LOGIN_PATH = "/login";
-const HOME_PATH = "/credentials";
+const HOME_PATH = "/home";
 
 /**
  * Next.js 16 で middleware は proxy にリネームされ、Node.js ランタイム固定になった。
@@ -37,5 +37,14 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.svg$).*)"],
+  // 除外する理由:
+  //  - api/ : 認可は各 Route Handler の withSession が担う。ここで弾くと
+  //           fetch に対して HTML へのリダイレクト(307)を返してしまい、
+  //           呼び出し側がエラー内容を判別できない（401 の JSON を返すべき）。
+  //           ログイン API 自体も未認証で叩くため必ず通す必要がある。
+  //  - PWA 資材 : manifest / Service Worker / アイコンは未ログインでも取得
+  //           できないと、インストールも SW の登録も失敗する。
+  matcher: [
+    "/((?!api/|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/|apple-icon|icon$|.*\\.(?:svg|png|jpg|jpeg|webp|ico)$).*)",
+  ],
 };

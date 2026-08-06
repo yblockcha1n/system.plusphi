@@ -1,9 +1,8 @@
 "use client";
 
-import { useTransition } from "react";
 import { LoaderCircleIcon } from "lucide-react";
-import { toast } from "sonner";
-import type { ActionState } from "@/features/credentials/schema";
+import type { ApiResult } from "@/lib/api-client";
+import { useApiMutation } from "@/components/shared/use-api";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,7 +19,7 @@ type ConfirmDeleteDialogProps = {
   onOpenChange: (open: boolean) => void;
   title: string;
   description: string;
-  onConfirm: () => Promise<ActionState>;
+  onConfirm: () => Promise<ApiResult>;
 };
 
 export function ConfirmDeleteDialog({
@@ -30,21 +29,9 @@ export function ConfirmDeleteDialog({
   description,
   onConfirm,
 }: ConfirmDeleteDialogProps) {
-  const [pending, startTransition] = useTransition();
+  const { run, pending } = useApiMutation();
 
-  const handleConfirm = () => {
-    startTransition(async () => {
-      const result = await onConfirm();
-
-      if (result.status === "error") {
-        toast.error(result.message);
-        return;
-      }
-
-      toast.success(result.message);
-      onOpenChange(false);
-    });
-  };
+  const handleConfirm = () => run(onConfirm, { onSuccess: () => onOpenChange(false) });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -1,27 +1,16 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import { LoaderCircleIcon } from "lucide-react";
-import { toast } from "sonner";
-import { saveCredential } from "@/features/credentials/actions";
-import {
-  NO_SECTION,
-  idleState,
-  type ActionState,
-  type CredentialItem,
-  type SectionGroup,
-} from "@/features/credentials/schema";
+import { api, upsert } from "@/lib/api-client";
+import { NO_SECTION, type CredentialItem, type SectionGroup } from "@/features/credentials/schema";
+import { Field } from "@/components/shared/field";
+import { SelectField, type SelectOption } from "@/components/shared/select-field";
+import { useApiForm } from "@/components/shared/use-api";
+import { useFormResetKey } from "@/components/shared/use-form-reset-key";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Sheet,
   SheetClose,
@@ -42,33 +31,6 @@ type CredentialSheetProps = {
   sections: SectionGroup[];
 };
 
-function Field({
-  label,
-  htmlFor,
-  errors,
-  hint,
-  children,
-}: {
-  label: string;
-  htmlFor: string;
-  errors?: string[];
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <Label htmlFor={htmlFor}>{label}</Label>
-      {children}
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-      {errors?.map((error) => (
-        <p key={error} className="text-xs text-destructive">
-          {error}
-        </p>
-      ))}
-    </div>
-  );
-}
-
 export function CredentialSheet({
   open,
   onOpenChange,
@@ -76,57 +38,28 @@ export function CredentialSheet({
   defaultSectionId,
   sections,
 }: CredentialSheetProps) {
-  const [state, formAction, pending] = useActionState(saveCredential, idleState);
+  const { state, pending, onSubmit } = useApiForm(
+    (values) => upsert(values, api.createCredential, api.updateCredential),
+    () => onOpenChange(false)
+  );
   const isEdit = Boolean(credential);
 
   const initialSection = credential?.sectionId ?? defaultSectionId ?? NO_SECTION;
   const [sectionId, setSectionId] = useState<string>(initialSection);
 
-  // Sheet を開き直したときに前回の選択が残らないようにする。
-  // （effect ではなくレンダー中に追随させる: https://react.dev/learn/you-might-not-need-an-effect）
-  const [wasOpen, setWasOpen] = useState(open);
-  if (open !== wasOpen) {
-    setWasOpen(open);
-    if (open) {
-      setSectionId(initialSection);
-    }
-  }
+  // Sheet を開き直したときに前回の入力・選択が残らないようにする
+  const formKey = useFormResetKey(open, () => setSectionId(initialSection));
 
-  // useActionState の state は結果が返ったときだけ新しいオブジェクトになる。
-  // 「同じ結果を二度処理しない」ガードが無いと、onOpenChange の identity 変化で
-  // effect が再実行され、status が success のままなので閉じる→再レンダリング→
-  // また閉じる…と無限ループする。
-  const handledState = useRef<ActionState | null>(null);
-
-  useEffect(() => {
-    if (handledState.current === state) return;
-    handledState.current = state;
-
-    if (state.status === "success") {
-      toast.success(state.message);
-      onOpenChange(false);
-    } else if (state.status === "error" && !state.fieldErrors) {
-      toast.error(state.message);
-    }
-  }, [state, onOpenChange]);
-
-  // Select に毎回新しいオブジェクトを渡すと参照が変わり続けて再レンダリングが
-  // 収束しなくなるため、必ずメモ化する。
-  const sectionOptions = useMemo<Record<string, React.ReactNode>>(
-    () => ({
-      [NO_SECTION]: "セクションなし（単一登録）",
-      ...Object.fromEntries(
-        sections
-          .filter((group) => group.id !== null)
-          .map((group) => [group.id as string, group.name])
-      ),
-    }),
-    [sections]
-  );
+  const sectionOptions: SelectOption[] = [
+    { value: NO_SECTION, label: "セクションなし（単一登録）" },
+    ...sections
+      .filter((group) => group.id !== null)
+      .map((group) => ({ value: group.id as string, label: group.name })),
+  ];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 sm:max-w-md">
+      <SheetContent className="flex flex-col gap-0">
         <SheetHeader className="border-b">
           <SheetTitle>{isEdit ? "クレデンシャルを編集" : "クレデンシャルを登録"}</SheetTitle>
           <SheetDescription>
@@ -134,29 +67,19 @@ export function CredentialSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <form action={formAction} className="flex min-h-0 flex-1 flex-col">
-          <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-4">
+        <form key={formKey} onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="@container flex flex-1 flex-col gap-5 overflow-y-auto p-4">
             {credential && <input type="hidden" name="id" value={credential.id} />}
-            <input type="hidden" name="sectionId" value={sectionId} />
 
-            <Field label="セクション" htmlFor="sectionId" errors={state.fieldErrors?.sectionId}>
-              <Select
-                items={sectionOptions}
-                value={sectionId}
-                onValueChange={(value) => setSectionId(value as string)}
-              >
-                <SelectTrigger id="sectionId" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(sectionOptions).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
+            <SelectField
+              label="セクション"
+              id="sectionId"
+              name="sectionId"
+              value={sectionId}
+              onValueChange={setSectionId}
+              options={sectionOptions}
+              errors={state.fieldErrors?.sectionId}
+            />
 
             <Field label="名称" htmlFor="name" errors={state.fieldErrors?.name}>
               <Input
@@ -182,11 +105,7 @@ export function CredentialSheet({
               label="パスワード"
               htmlFor="password"
               errors={state.fieldErrors?.password}
-              hint={
-                isEdit
-                  ? "空欄のままにすると現在のパスワードを維持します。"
-                  : undefined
-              }
+              hint={isEdit ? "空欄のままにすると現在のパスワードを維持します。" : undefined}
             >
               <Input
                 id="password"

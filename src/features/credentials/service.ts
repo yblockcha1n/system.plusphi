@@ -1,35 +1,22 @@
-"use server";
-
+import "server-only";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { requireSession } from "@/lib/dal";
 import { supabase } from "@/lib/supabase";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
-import {
-  credentialFormSchema,
-  sectionFormSchema,
-  type ActionState,
-} from "@/features/credentials/schema";
+import { reorderRecords } from "@/lib/reorder";
+import { idField, textField, toErrorState, type ActionState } from "@/lib/form";
+import { credentialFormSchema, sectionFormSchema } from "@/features/credentials/schema";
+import type { SessionPayload } from "@/lib/session";
 
 const CREDENTIALS_PATH = "/credentials";
 
-function toErrorState(error: z.ZodError): ActionState {
-  return {
-    status: "error",
-    message: "入力内容を確認してください。",
-    fieldErrors: z.flattenError(error).fieldErrors as Record<string, string[]>,
-  };
-}
-
 /* ------------------------------- セクション ------------------------------- */
 
-export async function saveSection(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  await requireSession();
-
+export async function saveSection(input: unknown): Promise<ActionState> {
   const parsed = sectionFormSchema.safeParse({
-    id: formData.get("id") || undefined,
-    name: formData.get("name"),
-    description: formData.get("description"),
+    id: idField(input),
+    name: textField(input, "name"),
+    description: textField(input, "description"),
   });
 
   if (!parsed.success) {
@@ -51,8 +38,6 @@ export async function saveSection(_prev: ActionState, formData: FormData): Promi
 }
 
 export async function deleteSection(sectionId: string): Promise<ActionState> {
-  await requireSession();
-
   const parsed = z.uuid().safeParse(sectionId);
   if (!parsed.success) {
     return { status: "error", message: "不正なセクションです。" };
@@ -69,19 +54,34 @@ export async function deleteSection(sectionId: string): Promise<ActionState> {
   return { status: "success", message: "セクションを削除しました。中のクレデンシャルは未分類に移動しました。" };
 }
 
+/**
+ * ドラッグ&ドロップ後の並び順を保存する。
+ * 「未分類」は DB 上の行ではないので、呼び出し側で除外してから渡すこと。
+ */
+export async function reorderSections(input: unknown): Promise<ActionState> {
+  const result = await reorderRecords("sections", input);
+
+  if (result.status === "success") {
+    revalidatePath(CREDENTIALS_PATH);
+  }
+
+  return result;
+}
+
 /* ----------------------------- クレデンシャル ----------------------------- */
 
-export async function saveCredential(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const session = await requireSession();
-
+export async function saveCredential(
+  session: SessionPayload,
+  input: unknown
+): Promise<ActionState> {
   const parsed = credentialFormSchema.safeParse({
-    id: formData.get("id") || undefined,
-    sectionId: formData.get("sectionId") ?? "",
-    name: formData.get("name"),
-    username: formData.get("username"),
-    password: formData.get("password"),
-    url: formData.get("url"),
-    notes: formData.get("notes"),
+    id: idField(input),
+    sectionId: textField(input, "sectionId"),
+    name: textField(input, "name"),
+    username: textField(input, "username"),
+    password: textField(input, "password"),
+    url: textField(input, "url"),
+    notes: textField(input, "notes"),
   });
 
   if (!parsed.success) {
@@ -116,7 +116,7 @@ export async function saveCredential(_prev: ActionState, formData: FormData): Pr
     return { status: "success", message: "クレデンシャルを更新しました。" };
   }
 
-  // 登録者はセッションから取る。フォームの値を信用すると詐称できてしまう。
+  // 登録者はセッションから取る。リクエストの値を信用すると詐称できてしまう。
   const { error } = await supabase.from("credentials").insert({
     ...base,
     password_ciphertext: password !== null ? encryptSecret(password) : null,
@@ -133,8 +133,6 @@ export async function saveCredential(_prev: ActionState, formData: FormData): Pr
 }
 
 export async function deleteCredential(credentialId: string): Promise<ActionState> {
-  await requireSession();
-
   const parsed = z.uuid().safeParse(credentialId);
   if (!parsed.success) {
     return { status: "error", message: "不正なクレデンシャルです。" };
@@ -159,41 +157,89 @@ const revealSchema = z.object({
 
 /**
  * 一覧には暗号文すら送らず、「表示」を押されたときだけここで復号する。
- * Server Action は UI を経由せず直接 POST できるため、必ず認証を確認する。
+ * 認証は Route Handler 側の withSession が担保する。
+ *
+ * クレデンシャルは全員が全件を見られる共有金庫として運用しているため、
+ * 行ごとの権限は持たせない代わりに、復号できたときだけ監査ログを 1 行残す。
  */
 export async function revealSecret(
+  session: SessionPayload,
   credentialId: string,
-  field: "password" | "notes"
-): Promise<{ value: string } | { error: string }> {
-  await requireSession();
+  input: unknown
+): Promise<ActionState & { data?: { value: string } }> {
+  const parsed = revealSchema.safeParse({
+    credentialId,
+    field: textField(input, "field"),
+  });
 
-  const parsed = revealSchema.safeParse({ credentialId, field });
   if (!parsed.success) {
-    return { error: "不正なリクエストです。" };
+    return { status: "error", message: "不正なリクエストです。" };
   }
 
-  const column = parsed.data.field === "password" ? "password_ciphertext" : "notes_ciphertext";
+  const { field } = parsed.data;
+  const column = field === "password" ? "password_ciphertext" : "notes_ciphertext";
 
   const { data, error } = await supabase
     .from("credentials")
-    .select(column)
+    .select(`name, ${column}`)
     .eq("id", parsed.data.credentialId)
     .single();
 
   if (error || !data) {
-    return { error: "取得に失敗しました。" };
+    return { status: "error", message: "取得に失敗しました。" };
   }
 
-  const ciphertext = (data as Record<string, string | null>)[column];
+  const row = data as unknown as Record<string, string | null>;
+  const ciphertext = row[column];
 
   if (!ciphertext) {
-    return { error: "値が登録されていません。" };
+    return { status: "error", message: "値が登録されていません。" };
   }
 
+  let value: string;
+
   try {
-    return { value: decryptSecret(ciphertext) };
+    value = decryptSecret(ciphertext);
   } catch {
     // 鍵が変わった / データが壊れている
-    return { error: "復号に失敗しました。ENCRYPTION_KEY が登録時と異なる可能性があります。" };
+    return {
+      status: "error",
+      message: "復号に失敗しました。ENCRYPTION_KEY が登録時と異なる可能性があります。",
+    };
+  }
+
+  await recordAccess(session, parsed.data.credentialId, row.name ?? "(名称不明)", field);
+
+  return { status: "success", data: { value } };
+}
+
+/**
+ * 復号を監査ログに残す。
+ *
+ * 記録に失敗しても復号結果は返す（fail open）。0004 のマイグレーションを流す前の
+ * 環境や DB の一時的な不調で、クレデンシャル閲覧そのものが使えなくなるほうが
+ * 業務影響が大きいため。取りこぼしはサーバーログから追えるようにしておく。
+ */
+async function recordAccess(
+  session: SessionPayload,
+  credentialId: string,
+  credentialName: string,
+  field: "password" | "notes"
+): Promise<void> {
+  const { error } = await supabase.from("credential_access_log").insert({
+    credential_id: credentialId,
+    credential_name: credentialName,
+    // 閲覧者はセッションから取る。リクエストの値を信用すると詐称できてしまう。
+    actor: session.email,
+    field,
+  });
+
+  if (error) {
+    console.error("[audit] クレデンシャル閲覧の記録に失敗しました", {
+      credentialId,
+      actor: session.email,
+      field,
+      message: error.message,
+    });
   }
 }

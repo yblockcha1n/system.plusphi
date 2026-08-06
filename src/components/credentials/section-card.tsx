@@ -2,41 +2,44 @@
 
 import { useState } from "react";
 import { FolderIcon, InboxIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
-import { deleteCredential, deleteSection } from "@/features/credentials/actions";
+import { api } from "@/lib/api-client";
 import type { CredentialItem, SectionGroup } from "@/features/credentials/schema";
 import { CredentialTable } from "@/components/credentials/credential-table";
 import { CredentialSheet } from "@/components/credentials/credential-sheet";
 import { SectionSheet } from "@/components/credentials/section-sheet";
-import { ConfirmDeleteDialog } from "@/components/credentials/confirm-delete-dialog";
+import { ConfirmDeleteDialog } from "@/components/shared/confirm-delete-dialog";
+import { useSheetTarget } from "@/components/shared/use-sheet-target";
 import { Button } from "@/components/ui/button";
 
 type SectionCardProps = {
   section: SectionGroup;
   sections: SectionGroup[];
+  /** 並べ替え用の掴み手。「未分類」には渡さない。 */
+  dragHandle?: React.ReactNode;
 };
 
-export function SectionCard({ section, sections }: SectionCardProps) {
-  const [credentialSheet, setCredentialSheet] = useState<{
-    open: boolean;
-    credential?: CredentialItem;
-  }>({ open: false });
+export function SectionCard({ section, sections, dragHandle }: SectionCardProps) {
+  // 閉じても対象を保持する（詳細は use-sheet-target.ts のコメント参照）
+  const credentialSheet = useSheetTarget<CredentialItem>();
+  const credentialDelete = useSheetTarget<CredentialItem>();
   const [sectionSheetOpen, setSectionSheetOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<CredentialItem | null>(null);
   const [sectionDeleteOpen, setSectionDeleteOpen] = useState(false);
 
   const isUnsectioned = section.id === null;
 
   return (
-    <section className="overflow-hidden rounded-xl border bg-card shadow-sm">
-      <header className="flex items-center gap-3 border-b bg-card px-4 py-3">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+    <section className="overflow-hidden border bg-card">
+      <header className="flex items-center gap-2 border-b bg-card px-2 py-3 sm:gap-3 sm:px-3">
+        {dragHandle}
+
+        <div className="flex size-8 shrink-0 items-center justify-center bg-muted text-muted-foreground">
           {isUnsectioned ? <InboxIcon className="size-4" /> : <FolderIcon className="size-4" />}
         </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h2 className="truncate font-heading text-sm font-semibold">{section.name}</h2>
-            <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+            <span className="shrink-0 bg-muted px-1.5 py-0.5 text-xs text-muted-foreground" data-numeric>
               {section.credentials.length}
             </span>
           </div>
@@ -49,7 +52,7 @@ export function SectionCard({ section, sections }: SectionCardProps) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setCredentialSheet({ open: true })}
+            onClick={() => credentialSheet.show()}
           >
             <PlusIcon />
             追加
@@ -80,16 +83,14 @@ export function SectionCard({ section, sections }: SectionCardProps) {
 
       <CredentialTable
         credentials={section.credentials}
-        onEdit={(credential) => setCredentialSheet({ open: true, credential })}
-        onDelete={(credential) => setDeleteTarget(credential)}
+        onEdit={(credential) => credentialSheet.show(credential)}
+        onDelete={(credential) => credentialDelete.show(credential)}
       />
 
       <CredentialSheet
         open={credentialSheet.open}
-        onOpenChange={(open) =>
-          setCredentialSheet((prev) => (open ? { ...prev, open } : { open: false }))
-        }
-        credential={credentialSheet.credential}
+        onOpenChange={credentialSheet.onOpenChange}
+        credential={credentialSheet.target}
         defaultSectionId={section.id}
         sections={sections}
       />
@@ -106,17 +107,17 @@ export function SectionCard({ section, sections }: SectionCardProps) {
             onOpenChange={setSectionDeleteOpen}
             title={`セクション「${section.name}」を削除しますか？`}
             description="中のクレデンシャルは削除されず、「未分類（単一登録）」に移動します。"
-            onConfirm={() => deleteSection(section.id as string)}
+            onConfirm={() => api.deleteSection(section.id as string)}
           />
         </>
       )}
 
       <ConfirmDeleteDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title={`「${deleteTarget?.name}」を削除しますか？`}
+        open={credentialDelete.open}
+        onOpenChange={credentialDelete.onOpenChange}
+        title={`「${credentialDelete.target?.name}」を削除しますか？`}
         description="この操作は取り消せません。保存されているパスワードとメモも完全に削除されます。"
-        onConfirm={() => deleteCredential(deleteTarget?.id as string)}
+        onConfirm={() => api.deleteCredential(credentialDelete.target?.id as string)}
       />
     </section>
   );

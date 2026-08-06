@@ -4,7 +4,10 @@ import { cookies } from "next/headers";
 import { env, findAdminUser } from "@/lib/env";
 
 export const SESSION_COOKIE = "plusphi_session";
-const SESSION_DURATION_SEC = 60 * 60 * 8; // 8時間
+// 社内の限られた端末からしか使わないため、再ログインの手間を優先して長めに取る。
+// ADMIN_USERS から外した利用者は verifySessionToken 側で即座に弾かれるので、
+// 期限が長くても「退職者が1ヶ月使い続けられる」ことにはならない。
+const SESSION_DURATION_SEC = 60 * 60 * 24 * 30; // 30日
 
 const encodedKey = new TextEncoder().encode(env.SESSION_SECRET);
 

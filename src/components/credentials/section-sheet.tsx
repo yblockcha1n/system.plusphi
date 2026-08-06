@@ -1,10 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
 import { LoaderCircleIcon } from "lucide-react";
-import { toast } from "sonner";
-import { saveSection } from "@/features/credentials/actions";
-import { idleState, type ActionState, type SectionGroup } from "@/features/credentials/schema";
+import { api, upsert } from "@/lib/api-client";
+import type { SectionGroup } from "@/features/credentials/schema";
+import { useApiForm } from "@/components/shared/use-api";
+import { useFormResetKey } from "@/components/shared/use-form-reset-key";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,27 +27,18 @@ type SectionSheetProps = {
 };
 
 export function SectionSheet({ open, onOpenChange, section }: SectionSheetProps) {
-  const [state, formAction, pending] = useActionState(saveSection, idleState);
+  const { state, pending, onSubmit } = useApiForm(
+    (values) => upsert(values, api.createSection, api.updateSection),
+    () => onOpenChange(false)
+  );
   const isEdit = Boolean(section?.id);
 
-  // 同じ結果を二度処理しないガード（詳細は credential-sheet.tsx のコメント参照）
-  const handledState = useRef<ActionState | null>(null);
-
-  useEffect(() => {
-    if (handledState.current === state) return;
-    handledState.current = state;
-
-    if (state.status === "success") {
-      toast.success(state.message);
-      onOpenChange(false);
-    } else if (state.status === "error" && !state.fieldErrors) {
-      toast.error(state.message);
-    }
-  }, [state, onOpenChange]);
+  // 開き直したときに前回の入力が残らないようにする
+  const formKey = useFormResetKey(open);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 sm:max-w-md">
+      <SheetContent className="flex flex-col gap-0">
         <SheetHeader className="border-b">
           <SheetTitle>{isEdit ? "セクションを編集" : "セクションを作成"}</SheetTitle>
           <SheetDescription>
@@ -55,8 +46,8 @@ export function SectionSheet({ open, onOpenChange, section }: SectionSheetProps)
           </SheetDescription>
         </SheetHeader>
 
-        <form action={formAction} className="flex min-h-0 flex-1 flex-col">
-          <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-4">
+        <form key={formKey} onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="@container flex flex-1 flex-col gap-5 overflow-y-auto p-4">
             {section?.id && <input type="hidden" name="id" value={section.id} />}
 
             <div className="flex flex-col gap-2">

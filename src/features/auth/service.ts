@@ -1,14 +1,9 @@
-"use server";
-
+import "server-only";
 import { compare } from "bcryptjs";
-import { redirect } from "next/navigation";
 import { z } from "zod";
 import { env, findAdminUser } from "@/lib/env";
 import { createSessionCookie, deleteSessionCookie } from "@/lib/session";
-
-export type LoginState = {
-  error?: string;
-};
+import type { ActionState } from "@/lib/form";
 
 const loginSchema = z.object({
   email: z.email(),
@@ -18,14 +13,15 @@ const loginSchema = z.object({
 // どちらが誤っているかを明かさない
 const INVALID_CREDENTIALS = "メールアドレスまたはパスワードが正しくありません。";
 
-export async function login(_prevState: LoginState, formData: FormData): Promise<LoginState> {
-  const parsed = loginSchema.safeParse({
-    email: formData.get("email"),
-    password: formData.get("password"),
-  });
+/**
+ * 認証してセッション Cookie を張る。
+ * 画面遷移はここでは行わない（Route Handler の応答を見てクライアント側で遷移する）。
+ */
+export async function login(input: unknown): Promise<ActionState> {
+  const parsed = loginSchema.safeParse(input);
 
   if (!parsed.success) {
-    return { error: INVALID_CREDENTIALS };
+    return { status: "error", message: INVALID_CREDENTIALS };
   }
 
   const { email, password } = parsed.data;
@@ -37,15 +33,15 @@ export async function login(_prevState: LoginState, formData: FormData): Promise
   const passwordMatches = await compare(password, (user ?? env.ADMIN_USERS[0]).passwordHash);
 
   if (!user || !passwordMatches) {
-    return { error: INVALID_CREDENTIALS };
+    return { status: "error", message: INVALID_CREDENTIALS };
   }
 
   await createSessionCookie({ sub: user.email, email: user.email });
 
-  redirect("/credentials");
+  return { status: "success", message: "ログインしました。" };
 }
 
-export async function logout(): Promise<void> {
+export async function logout(): Promise<ActionState> {
   await deleteSessionCookie();
-  redirect("/login");
+  return { status: "success", message: "ログアウトしました。" };
 }

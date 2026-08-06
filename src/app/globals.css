@@ -26,6 +26,14 @@
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
+  /* プロジェクトの識別色。UI 全体の配色はモノクロのまま変えず、
+     カレンダーのチップとプロジェクトのドットだけをこの色で塗り分ける。 */
+  --color-project-gray: var(--project-gray);
+  --color-project-blue: var(--project-blue);
+  --color-project-green: var(--project-green);
+  --color-project-amber: var(--project-amber);
+  --color-project-red: var(--project-red);
+  --color-project-purple: var(--project-purple);
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
@@ -72,7 +80,15 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  /* 角を落とさない。--radius-sm 〜 4xl はすべてこの値からの計算なので、
+     ここを 0 にすればアプリ全体が角張る（rounded-* の個別指定は不要）。 */
+  --radius: 0rem;
+  --project-gray: oklch(0.55 0 0);
+  --project-blue: oklch(0.53 0.13 250);
+  --project-green: oklch(0.52 0.11 155);
+  --project-amber: oklch(0.58 0.12 70);
+  --project-red: oklch(0.55 0.17 25);
+  --project-purple: oklch(0.52 0.15 300);
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -107,6 +123,12 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
+  --project-gray: oklch(0.72 0 0);
+  --project-blue: oklch(0.72 0.12 250);
+  --project-green: oklch(0.72 0.11 155);
+  --project-amber: oklch(0.78 0.12 70);
+  --project-red: oklch(0.72 0.15 25);
+  --project-purple: oklch(0.72 0.14 300);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -126,5 +148,20 @@
   }
   html {
     @apply font-sans;
+    /* PWA としてホーム画面から起動したとき、iOS のラバーバンドで
+       ヘッダーやボトムナビが動かないようにする。 */
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
   }
+  /* 日付や件数は桁を揃えたほうが表として読みやすい */
+  table,
+  time,
+  [data-numeric] {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@utility safe-bottom {
+  /* ホーム画面起動時のホームインジケーター分を空ける */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
