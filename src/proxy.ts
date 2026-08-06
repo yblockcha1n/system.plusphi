@@ -45,6 +45,6 @@ export const config = {
   //  - PWA 資材 : manifest / Service Worker / アイコンは未ログインでも取得
   //           できないと、インストールも SW の登録も失敗する。
   matcher: [
-    "/((?!api/|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/|apple-icon|icon$|.*\\.(?:svg|png|jpg|jpeg|webp|ico)$).*)",
+    "/((?!api/|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/|apple-icon|icon.png|.*\\.(?:svg|png|jpg|jpeg|webp|ico)$).*)",
   ],
 };

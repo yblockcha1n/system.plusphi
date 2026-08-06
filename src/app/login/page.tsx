@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ShieldCheckIcon } from "lucide-react";
+import Image from "next/image";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = {
@@ -11,8 +11,8 @@ export default function LoginPage() {
     <main className="flex min-h-svh items-center justify-center bg-muted/40 p-6">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <ShieldCheckIcon className="size-5" />
+          <div className="flex size-12 items-center justify-center border bg-background">
+            <Image src="/logo.png" alt="plusphi" width={26} height={26} priority className="dark:invert" />
           </div>
           <div>
             <h1 className="font-heading text-xl font-semibold">plusphi 基幹システム</h1>

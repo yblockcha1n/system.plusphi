@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -132,16 +133,21 @@ function TaskRow({
           }
         />
         <DropdownMenuContent align="start" className="w-auto min-w-36">
-          <DropdownMenuLabel>状態を変更</DropdownMenuLabel>
-          {TASK_STATUSES.map((status) => (
-            <DropdownMenuItem
-              key={status}
-              disabled={status === task.status}
-              onClick={() => changeStatus(status)}
-            >
-              {TASK_STATUS_LABELS[status]}
-            </DropdownMenuItem>
-          ))}
+          {/* DropdownMenuLabel は Base UI の Menu.GroupLabel なので、
+              Menu.Group（= DropdownMenuGroup）の中でしか使えない。
+              外に置くと MenuGroupContext is missing で実行時エラーになる。 */}
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>状態を変更</DropdownMenuLabel>
+            {TASK_STATUSES.map((status) => (
+              <DropdownMenuItem
+                key={status}
+                disabled={status === task.status}
+                onClick={() => changeStatus(status)}
+              >
+                {TASK_STATUS_LABELS[status]}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
 

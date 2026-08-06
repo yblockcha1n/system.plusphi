@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOutIcon, PanelLeftIcon, ShieldCheckIcon } from "lucide-react";
+import Image from "next/image";
+import { LogOutIcon, PanelLeftIcon } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useApiMutation } from "@/components/shared/use-api";
 import { findNavItem, navItems } from "@/components/layout/nav-items";
@@ -51,9 +52,7 @@ export function AppShell({ defaultCollapsed, name, email, children }: AppShellPr
             collapsed && "justify-center px-0"
           )}
         >
-          <div className="flex size-9 shrink-0 items-center justify-center bg-sidebar-primary text-sidebar-primary-foreground">
-            <ShieldCheckIcon className="size-4.5" />
-          </div>
+          <BrandMark className="size-9" size={20} />
           {!collapsed && (
             <span className="truncate font-heading text-sm font-semibold tracking-tight">
               plusphi
@@ -110,9 +109,7 @@ export function AppShell({ defaultCollapsed, name, email, children }: AppShellPr
           </Button>
 
           {/* モバイルではサイドバーのロゴが見えないのでヘッダーに出す */}
-          <div className="flex size-8 shrink-0 items-center justify-center bg-primary text-primary-foreground lg:hidden">
-            <ShieldCheckIcon className="size-4" />
-          </div>
+          <BrandMark className="size-8 lg:hidden" size={18} />
 
           <h1 className="truncate font-heading text-sm font-semibold">
             {current?.label ?? "plusphi"}
@@ -158,6 +155,30 @@ export function AppShell({ defaultCollapsed, name, email, children }: AppShellPr
           })}
         </nav>
       </div>
+    </div>
+  );
+}
+
+/**
+ * ブランドマーク。ロゴは黒一色の透過 PNG なので、白い枠の中に置いて
+ * 背景に関係なく読めるようにする（ダークテーマでは反転させる）。
+ */
+function BrandMark({ className, size }: { className?: string; size: number }) {
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 items-center justify-center border bg-background",
+        className
+      )}
+    >
+      <Image
+        src="/logo.png"
+        alt="plusphi"
+        width={size}
+        height={size}
+        priority
+        className="dark:invert"
+      />
     </div>
   );
 }
