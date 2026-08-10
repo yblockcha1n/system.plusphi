@@ -19,6 +19,29 @@ export function toCalendarView(value: string | null | undefined): CalendarView {
     : "month";
 }
 
+/**
+ * 帯を何で塗り分けるか。
+ *  - project : 所属プロジェクトの識別色（従来どおり）
+ *  - user    : 予定は作成者、タスクは担当者の色。誰の予定かをひと目で見るため。
+ *
+ * 表示範囲（view / date）と同じく URL（?color=）だけで決まる。色は
+ * サーバー側で解決してから CalendarEntry.color に入れるので、描画側は
+ * どちらのモードかを知らなくてよい。
+ */
+export const CALENDAR_COLOR_MODES = ["project", "user"] as const;
+export type CalendarColorMode = (typeof CALENDAR_COLOR_MODES)[number];
+
+export const CALENDAR_COLOR_MODE_LABELS: Record<CalendarColorMode, string> = {
+  project: "プロジェクト",
+  user: "担当者",
+};
+
+export function toCalendarColorMode(value: string | null | undefined): CalendarColorMode {
+  return CALENDAR_COLOR_MODES.includes(value as CalendarColorMode)
+    ? (value as CalendarColorMode)
+    : "project";
+}
+
 const requiredDateTime = z
   .string()
   .trim()
@@ -89,8 +112,11 @@ export type CalendarEntry = {
   startsAt: string;
   endsAt: string;
   allDay: boolean;
+  /** 表示に使う色。色分けモードに応じてサーバー側で解決済み。 */
   color: ProjectColor;
   projectName: string | null;
+  /** 「担当者」で色分けしたときの色の由来（予定は作成者、タスクは担当者）。 */
+  ownerName: string | null;
 };
 
 /**

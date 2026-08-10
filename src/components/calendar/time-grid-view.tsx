@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { entryClassName, type CalendarEntry } from "@/features/calendar/schema";
+import { useScrollRestore } from "@/components/shared/use-scroll-restore";
 import {
   MINUTES_PER_DAY,
   WEEKDAY_LABELS,
@@ -20,7 +21,7 @@ const HOUR_PX = 48;
 const SNAP_MIN = 30;
 /** クリック（ドラッグせず離した）ときに作る予定の長さ(分)。 */
 const CLICK_SPAN_MIN = 60;
-/** 初期スクロール位置。早朝を隠して業務時間から見せる。 */
+/** 初期スクロール位置。早朝を隠して業務時間から見せる（前回位置が無いときだけ使う）。 */
 const INITIAL_SCROLL_HOUR = 7;
 
 type TimeGridViewProps = {
@@ -42,14 +43,13 @@ export function TimeGridView({
   onSelectDay,
   onSelectEntry,
 }: TimeGridViewProps) {
-  const scroller = useRef<HTMLDivElement>(null);
+  // 週/日をまたいでも「何時あたりを見ていたか」は引き継ぎたいので、
+  // 表示範囲ではなくビュー種別ごとに 1 つのキーで覚える。
+  const scroller = useScrollRestore<HTMLDivElement>(
+    "calendar:time-grid",
+    INITIAL_SCROLL_HOUR * HOUR_PX
+  );
   const [selection, setSelection] = useState<Selection | null>(null);
-
-  useEffect(() => {
-    if (scroller.current) {
-      scroller.current.scrollTop = INITIAL_SCROLL_HOUR * HOUR_PX;
-    }
-  }, []);
 
   const columns = `repeat(${days.length}, minmax(0, 1fr))`;
 

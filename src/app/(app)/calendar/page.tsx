@@ -11,7 +11,11 @@ import {
 import { getCalendarData } from "@/features/calendar/queries";
 import { getProjectOptions } from "@/features/projects/queries";
 import { getTasks } from "@/features/tasks/queries";
-import { toCalendarView, type CalendarView } from "@/features/calendar/schema";
+import {
+  toCalendarColorMode,
+  toCalendarView,
+  type CalendarView,
+} from "@/features/calendar/schema";
 import { CalendarShell } from "@/components/calendar/calendar-shell";
 
 export const metadata: Metadata = {
@@ -41,12 +45,13 @@ export default async function CalendarPage(props: PageProps<"/calendar">) {
   const searchParams = await props.searchParams;
 
   const view = toCalendarView(first(searchParams.view));
+  const colorMode = toCalendarColorMode(first(searchParams.color));
   const today = startOfDay(new Date());
   const anchor = parseDateKey(first(searchParams.date)) ?? today;
   const { start, end } = rangeFor(view, anchor);
 
   const [calendar, tasks, projects] = await Promise.all([
-    getCalendarData(start, end),
+    getCalendarData(start, end, colorMode),
     getTasks(),
     getProjectOptions(),
   ]);
@@ -55,6 +60,7 @@ export default async function CalendarPage(props: PageProps<"/calendar">) {
     <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col">
       <CalendarShell
         view={view}
+        colorMode={colorMode}
         anchorKey={dateKey(anchor)}
         todayKey={dateKey(today)}
         entries={calendar.entries}

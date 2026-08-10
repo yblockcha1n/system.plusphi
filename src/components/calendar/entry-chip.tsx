@@ -25,7 +25,10 @@ export function EntryChip({ entry, onSelect, hideTime, className }: EntryChipPro
         clickEvent.stopPropagation();
         onSelect(entry);
       }}
-      title={`${entry.projectName ? `[${entry.projectName}] ` : ""}${entry.title}`}
+      // 色だけでは誰の・どのプロジェクトの帯か断定できないので、hover で補う
+      title={[entry.projectName && `[${entry.projectName}]`, entry.title, entry.ownerName]
+        .filter(Boolean)
+        .join(" ")}
       className={cn(
         "flex w-full items-center gap-1 overflow-hidden px-1 py-0.5 text-left text-[0.6875rem] leading-tight transition-opacity hover:opacity-80",
         entryClassName(entry),

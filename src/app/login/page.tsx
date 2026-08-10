@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = {
@@ -8,7 +9,12 @@ export const metadata: Metadata = {
 
 export default function LoginPage() {
   return (
-    <main className="flex min-h-svh items-center justify-center bg-muted/40 p-6">
+    <main className="relative flex min-h-svh items-center justify-center bg-muted/40 p-6 dark:bg-background">
+      {/* ログイン前でもテーマを変えられるようにしておく */}
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
+
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
           <div className="flex size-12 items-center justify-center border bg-background">

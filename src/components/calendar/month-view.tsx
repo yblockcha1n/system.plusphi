@@ -4,6 +4,7 @@ import type { CalendarEntry } from "@/features/calendar/schema";
 import { WEEKDAY_LABELS, dateKey, fromParts, partsOf } from "@/lib/datetime";
 import { buildWeekLanes } from "@/components/calendar/layout";
 import { EntryChip } from "@/components/calendar/entry-chip";
+import { useScrollRestore } from "@/components/shared/use-scroll-restore";
 import { cn } from "@/lib/utils";
 
 /** 1 セルに積む帯の最大数。溢れたぶんは "+N" にまとめる。 */
@@ -32,6 +33,8 @@ export function MonthView({
   const weeks = Array.from({ length: days.length / 7 }, (_, index) =>
     days.slice(index * 7, index * 7 + 7)
   );
+  // 画面が低いと 6 週ぶんが収まらずスクロールするため、ここも位置を覚える
+  const scroller = useScrollRestore<HTMLDivElement>("calendar:month-grid");
 
   return (
     <div className="flex min-h-0 flex-1 flex-col border">
@@ -50,7 +53,7 @@ export function MonthView({
         ))}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div ref={scroller} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {weeks.map((week) => (
           <WeekRow
             key={dateKey(week[0])}

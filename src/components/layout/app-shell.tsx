@@ -1,26 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
-import { LogOutIcon, PanelLeftIcon } from "lucide-react";
+import { ChevronRightIcon, LogOutIcon, PanelLeftIcon } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useApiMutation } from "@/components/shared/use-api";
-import { findNavItem, navItems } from "@/components/layout/nav-items";
-import { SIDEBAR_COOKIE } from "@/components/layout/sidebar-cookie";
+import { findNavItem, navGroups, navItems, type NavItem } from "@/components/layout/nav-items";
+import {
+  NAV_GROUPS_COOKIE,
+  SIDEBAR_COOKIE,
+  writeSidebarCookie,
+} from "@/components/layout/sidebar-cookie";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type AppShellProps = {
   defaultCollapsed: boolean;
+  /** アコーディオンで閉じているグループの id。Cookie から来る。 */
+  defaultClosedGroups: string[];
   name: string;
   email: string;
   children: React.ReactNode;
 };
 
-export function AppShell({ defaultCollapsed, name, email, children }: AppShellProps) {
+export function AppShell({
+  defaultCollapsed,
+  defaultClosedGroups,
+  name,
+  email,
+  children,
+}: AppShellProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const [closedGroups, setClosedGroups] = useState(() => new Set(defaultClosedGroups));
   const pathname = usePathname();
   const router = useRouter();
   const { run: runLogout, pending: loggingOut } = useApiMutation();
@@ -29,7 +43,20 @@ export function AppShell({ defaultCollapsed, name, email, children }: AppShellPr
     const next = !collapsed;
     setCollapsed(next);
     // サーバー側の初期描画に反映させ、リロード時のちらつきを防ぐ
-    document.cookie = `${SIDEBAR_COOKIE}=${next ? "1" : "0"}; path=/; max-age=31536000; samesite=lax`;
+    writeSidebarCookie(SIDEBAR_COOKIE, next ? "1" : "0");
+  };
+
+  const toggleGroup = (groupId: string) => {
+    const next = new Set(closedGroups);
+
+    if (next.has(groupId)) {
+      next.delete(groupId);
+    } else {
+      next.add(groupId);
+    }
+
+    setClosedGroups(next);
+    writeSidebarCookie(NAV_GROUPS_COOKIE, [...next].join(","));
   };
 
   const current = findNavItem(pathname);
@@ -38,7 +65,8 @@ export function AppShell({ defaultCollapsed, name, email, children }: AppShellPr
   return (
     // h-svh + overflow-hidden にすることで、スクロールを main の中に閉じ込める。
     // テーブルのヘッダー固定はこれが前提。
-    <div className="flex h-svh overflow-hidden bg-muted/40">
+    // ライトは薄いグレーの下地。ダークは漆黒にしたいので muted を敷かない。
+    <div className="flex h-svh overflow-hidden bg-muted/40 dark:bg-background">
       {/* サイドバーはデスクトップのみ。モバイルは下のボトムナビが担当する。 */}
       <aside
         className={cn(
@@ -61,26 +89,56 @@ export function AppShell({ defaultCollapsed, name, email, children }: AppShellPr
         </div>
 
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
-          {navItems.map((item) => {
-            const Icon = item.icon;
+          {navGroups.map((group) => {
+            const links = group.items.map((item) => (
+              <NavLink
+                key={item.href}
+                item={item}
+                collapsed={collapsed}
+                active={isActive(item.href)}
+              />
+            ));
+
+            // 折りたたみ中は見出しを出す幅が無いので、グループを無視して並べる
+            if (collapsed || group.label === null) {
+              return <Fragment key={group.id}>{links}</Fragment>;
+            }
+
+            const isOpen = !closedGroups.has(group.id);
+            // 閉じたグループの中に現在地があると、どこに居るのか分からなくなる
+            const holdsCurrent = group.items.some((item) => isActive(item.href));
 
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                title={collapsed ? item.label : undefined}
-                aria-current={isActive(item.href) ? "page" : undefined}
-                className={cn(
-                  "flex h-9 items-center gap-2.5 border border-transparent px-2.5 text-sm font-medium transition-colors",
-                  collapsed && "justify-center px-0",
-                  isActive(item.href)
-                    ? "border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+              // 見出しの上に間を空ける。ただし nav の先頭に来たときは詰める
+              // （first: は nav の直接の子であるこの div に対して効かせる）
+              <div key={group.id} className="mt-2 flex flex-col gap-0.5 first:mt-0">
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.id)}
+                  aria-expanded={isOpen}
+                  aria-controls={`nav-group-${group.id}`}
+                  className={cn(
+                    "flex h-7 items-center gap-1 px-2.5 text-xs font-medium transition-colors",
+                    !isOpen && holdsCurrent
+                      ? "text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <ChevronRightIcon
+                    className={cn("size-3.5 shrink-0 transition-transform", isOpen && "rotate-90")}
+                  />
+                  <span className="truncate">{group.label}</span>
+                  {!isOpen && holdsCurrent && (
+                    <span className="size-1.5 shrink-0 bg-foreground" aria-hidden />
+                  )}
+                </button>
+
+                {isOpen && (
+                  <div id={`nav-group-${group.id}`} className="flex flex-col gap-0.5">
+                    {links}
+                  </div>
                 )}
-              >
-                <Icon className="size-4 shrink-0" />
-                {!collapsed && <span className="truncate">{item.label}</span>}
-              </Link>
+              </div>
             );
           })}
         </nav>
@@ -115,10 +173,13 @@ export function AppShell({ defaultCollapsed, name, email, children }: AppShellPr
             {current?.label ?? "plusphi"}
           </h1>
 
+          <div className="ml-auto flex items-center gap-1">
+            <ThemeToggle />
+          </div>
+
           <Button
             variant="ghost"
             size="sm"
-            className="ml-auto"
             disabled={loggingOut}
             onClick={() =>
               runLogout(api.logout, { silent: true, onSuccess: () => router.replace("/login") })
@@ -156,6 +217,37 @@ export function AppShell({ defaultCollapsed, name, email, children }: AppShellPr
         </nav>
       </div>
     </div>
+  );
+}
+
+/** サイドバーの 1 項目。折りたたみ中はアイコンだけにして名前は title で補う。 */
+function NavLink({
+  item,
+  collapsed,
+  active,
+}: {
+  item: NavItem;
+  collapsed: boolean;
+  active: boolean;
+}) {
+  const Icon = item.icon;
+
+  return (
+    <Link
+      href={item.href}
+      title={collapsed ? item.label : undefined}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "flex h-9 items-center gap-2.5 border border-transparent px-2.5 text-sm font-medium transition-colors",
+        collapsed && "justify-center px-0",
+        active
+          ? "border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground"
+          : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+      )}
+    >
+      <Icon className="size-4 shrink-0" />
+      {!collapsed && <span className="truncate">{item.label}</span>}
+    </Link>
   );
 }
 

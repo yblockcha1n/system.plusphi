@@ -99,12 +99,21 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
+/*
+ * ダークは漆黒。ページ・パネル・サイドバーはすべて純黒（oklch(0 0 0) = #000）にし、
+ * 面の切り分けは塗りではなく border に任せる（このアプリの UI はもともと角の無い
+ * 枠線主体のため、黒一色にしても構造が読める）。
+ *
+ * 例外はポップオーバー / メニュー / シートの --popover だけ。純黒の上に純黒を
+ * 重ねると、影が効かないぶん「浮いている面」の輪郭が掴めなくなるので、
+ * ここだけごく僅かに持ち上げている。
+ */
 .dark {
-  --background: oklch(0.145 0 0);
+  --background: oklch(0 0 0);
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
+  --card: oklch(0 0 0);
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
+  --popover: oklch(0.16 0 0);
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
@@ -115,8 +124,9 @@
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
+  /* 純黒の上では枠線が構造そのものになるので、灰背景のときより少し強くする */
+  --border: oklch(1 0 0 / 14%);
+  --input: oklch(1 0 0 / 20%);
   --ring: oklch(0.556 0 0);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
@@ -129,13 +139,13 @@
   --project-amber: oklch(0.78 0.12 70);
   --project-red: oklch(0.72 0.15 25);
   --project-purple: oklch(0.72 0.14 300);
-  --sidebar: oklch(0.205 0 0);
+  --sidebar: oklch(0 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-border: oklch(1 0 0 / 14%);
   --sidebar-ring: oklch(0.556 0 0);
 }
 

@@ -1,11 +1,15 @@
 import "server-only";
 import { requireSession } from "@/lib/dal";
-import { displayName } from "@/lib/env";
+import { displayName, userColor } from "@/lib/env";
 import { supabase } from "@/lib/supabase";
 import { addMinutes } from "@/lib/datetime";
 import { toProjectColor } from "@/features/projects/schema";
 import { buildProjectLookup, mapTaskRow } from "@/features/tasks/queries";
-import type { CalendarEntry, EventItem } from "@/features/calendar/schema";
+import type {
+  CalendarColorMode,
+  CalendarEntry,
+  EventItem,
+} from "@/features/calendar/schema";
 import type { TaskItem } from "@/features/tasks/schema";
 
 export type CalendarData = {
@@ -21,8 +25,15 @@ export type CalendarData = {
  *  - 開始〜終了が入っていれば作業期間の帯
  *  - 締切が入っていれば、その時刻に短い帯（deadline）
  * どちらも入っていれば両方出る（作業期間と締切は別概念のため）。
+ *
+ * 帯の色は colorMode に応じてここで決めてしまう。描画側（月/週/日ビュー）に
+ * モードを配って回ると、chip を出す全コンポーネントに引数が増えるため。
  */
-export async function getCalendarData(rangeStart: Date, rangeEnd: Date): Promise<CalendarData> {
+export async function getCalendarData(
+  rangeStart: Date,
+  rangeEnd: Date,
+  colorMode: CalendarColorMode = "project"
+): Promise<CalendarData> {
   await requireSession();
 
   const startIso = rangeStart.toISOString();
@@ -89,11 +100,15 @@ export async function getCalendarData(rangeStart: Date, rangeEnd: Date): Promise
 
   return {
     events,
-    entries: [...toEventEntries(events), ...toTaskEntries(tasks, rangeStart, rangeEnd)],
+    entries: [
+      ...toEventEntries(events, colorMode),
+      ...toTaskEntries(tasks, rangeStart, rangeEnd, colorMode),
+    ],
   };
 }
 
-function toEventEntries(events: EventItem[]): CalendarEntry[] {
+/** 予定に担当者の概念は無いので、「担当者」で色分けするときは作成者を使う。 */
+function toEventEntries(events: EventItem[], colorMode: CalendarColorMode): CalendarEntry[] {
   return events.map((event) => ({
     key: `event:${event.id}`,
     kind: "event",
@@ -102,20 +117,29 @@ function toEventEntries(events: EventItem[]): CalendarEntry[] {
     startsAt: event.startsAt,
     endsAt: event.endsAt,
     allDay: event.allDay,
-    color: event.projectColor,
+    color: colorMode === "user" ? userColor(event.createdBy) : event.projectColor,
     projectName: event.projectName,
+    ownerName: event.createdByName,
   }));
 }
 
 /** 締切だけの帯に持たせる長さ。時間軸ビューで潰れないよう 30 分幅にする。 */
 const DEADLINE_SPAN_MIN = 30;
 
-function toTaskEntries(tasks: TaskItem[], rangeStart: Date, rangeEnd: Date): CalendarEntry[] {
+function toTaskEntries(
+  tasks: TaskItem[],
+  rangeStart: Date,
+  rangeEnd: Date,
+  colorMode: CalendarColorMode
+): CalendarEntry[] {
   const entries: CalendarEntry[] = [];
   const inRange = (start: Date, end: Date) =>
     start.getTime() < rangeEnd.getTime() && end.getTime() > rangeStart.getTime();
 
   for (const task of tasks) {
+    // 担当者が未設定なら userColor が gray を返す = 凡例の「未割当」と揃う
+    const color = colorMode === "user" ? userColor(task.assignee) : task.projectColor;
+
     if (task.startsAt) {
       const start = new Date(task.startsAt);
       // 終了未設定のタスクは開始から 1 時間の帯として置く
@@ -130,8 +154,9 @@ function toTaskEntries(tasks: TaskItem[], rangeStart: Date, rangeEnd: Date): Cal
           startsAt: start.toISOString(),
           endsAt: end.toISOString(),
           allDay: false,
-          color: task.projectColor,
+          color,
           projectName: task.projectName,
+          ownerName: task.assigneeName,
         });
       }
     }
@@ -149,8 +174,9 @@ function toTaskEntries(tasks: TaskItem[], rangeStart: Date, rangeEnd: Date): Cal
           startsAt: start.toISOString(),
           endsAt: end.toISOString(),
           allDay: false,
-          color: task.projectColor,
+          color,
           projectName: task.projectName,
+          ownerName: task.assigneeName,
         });
       }
     }

@@ -5,14 +5,18 @@ import { useRouter } from "next/navigation";
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
 import { api } from "@/lib/api-client";
 import {
+  CALENDAR_COLOR_MODES,
+  CALENDAR_COLOR_MODE_LABELS,
   CALENDAR_VIEWS,
   CALENDAR_VIEW_LABELS,
+  type CalendarColorMode,
   type CalendarEntry,
   type CalendarView,
   type EventItem,
 } from "@/features/calendar/schema";
 import type { ProjectOption } from "@/features/projects/schema";
 import type { TaskItem } from "@/features/tasks/schema";
+import { ACCENT_COLORS } from "@/lib/colors";
 import type { UserOption } from "@/lib/env";
 import {
   addDays,
@@ -38,6 +42,8 @@ import { cn } from "@/lib/utils";
 
 type CalendarShellProps = {
   view: CalendarView;
+  /** 帯を何で塗り分けるか。URL から来る（色そのものは解決済みで entries に入っている）。 */
+  colorMode: CalendarColorMode;
   /** 表示の基準日 "YYYY-MM-DD"（JST）。URL から来る。 */
   anchorKey: string;
   /** サーバーで求めた今日。クライアントで new Date() すると描画がずれるため。 */
@@ -51,6 +57,7 @@ type CalendarShellProps = {
 
 export function CalendarShell({
   view,
+  colorMode,
   anchorKey,
   todayKey,
   entries,
@@ -71,8 +78,21 @@ export function CalendarShell({
   const taskSheet = useSheetTarget<TaskItem>();
   const deleteDialog = useSheetTarget<EventItem>();
 
-  const hrefFor = (nextView: CalendarView, date: Date) =>
-    `/calendar?view=${nextView}&date=${dateKey(date)}`;
+  /**
+   * 表示状態はすべて URL に載せる。指定しなかったぶんは現在の値を引き継ぐので、
+   * 例えば色分けを切り替えても見ている日付とビューはそのまま残る。
+   */
+  const hrefFor = (
+    next: { view?: CalendarView; date?: Date; color?: CalendarColorMode } = {}
+  ) => {
+    const params = new URLSearchParams({
+      view: next.view ?? view,
+      date: dateKey(next.date ?? anchor),
+      color: next.color ?? colorMode,
+    });
+
+    return `/calendar?${params}`;
+  };
 
   const step = (direction: 1 | -1) => {
     if (view === "month") return addMonths(anchor, direction);
@@ -101,20 +121,20 @@ export function CalendarShell({
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         {/* 画面遷移なので <button> ではなく <a>。Button の見た目だけ borrow する。 */}
-        <Link href={hrefFor(view, today)} className={buttonVariants({ variant: "outline", size: "sm" })}>
+        <Link href={hrefFor({ date: today })} className={buttonVariants({ variant: "outline", size: "sm" })}>
           今日
         </Link>
 
         <div className="flex">
           <Link
-            href={hrefFor(view, step(-1))}
+            href={hrefFor({ date: step(-1) })}
             aria-label="前へ"
             className={buttonVariants({ variant: "outline", size: "icon-sm" })}
           >
             <ChevronLeftIcon />
           </Link>
           <Link
-            href={hrefFor(view, step(1))}
+            href={hrefFor({ date: step(1) })}
             aria-label="次へ"
             className={buttonVariants({ variant: "outline", size: "icon-sm", className: "-ml-px" })}
           >
@@ -126,13 +146,35 @@ export function CalendarShell({
           {titleFor(view, anchor, days)}
         </h2>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {/* 色分けの切り替え。表示切り替えと同じセグメント風に揃える。 */}
+          <div className="flex items-center gap-1.5">
+            <span className="hidden text-xs text-muted-foreground sm:inline">色分け</span>
+            <div className="flex border" role="group" aria-label="帯の色分け">
+              {CALENDAR_COLOR_MODES.map((item) => (
+                <Link
+                  key={item}
+                  href={hrefFor({ color: item })}
+                  aria-current={item === colorMode ? "true" : undefined}
+                  className={cn(
+                    "px-3 py-1 text-xs font-medium transition-colors",
+                    item === colorMode
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:bg-muted"
+                  )}
+                >
+                  {CALENDAR_COLOR_MODE_LABELS[item]}
+                </Link>
+              ))}
+            </div>
+          </div>
+
           {/* 表示切り替え。角を落としたセグメント風にする。 */}
           <div className="flex border">
             {CALENDAR_VIEWS.map((item) => (
               <Link
                 key={item}
-                href={hrefFor(item, anchor)}
+                href={hrefFor({ view: item })}
                 aria-current={item === view ? "true" : undefined}
                 className={cn(
                   "px-3 py-1 text-xs font-medium transition-colors",
@@ -177,13 +219,18 @@ export function CalendarShell({
           entries={entries}
           todayKey={todayKey}
           onSelectRange={(start, end) => openDraft(start, end)}
-          onSelectDay={(day) => router.push(hrefFor("day", day))}
+          onSelectDay={(day) => router.push(hrefFor({ view: "day", date: day }))}
           onSelectEntry={selectEntry}
         />
       )}
 
+      {colorMode === "user" && <UserLegend users={users} />}
+
       <p className="text-xs text-muted-foreground">
         空いているところをクリック（週・日表示はドラッグ）すると予定を登録できます。実線はタスクの作業期間、破線は締切です。
+        {colorMode === "user"
+          ? "色は予定なら作成者、タスクなら担当者を表します。"
+          : "色は所属プロジェクトを表します。"}
       </p>
 
       <EventSheet
@@ -216,6 +263,28 @@ export function CalendarShell({
         }}
       />
     </div>
+  );
+}
+
+/**
+ * 誰が何色かの対応表。色はメールアドレスから導出しているので利用者は選べない。
+ * それを覚えてもらうのは無理なので、担当者で色分けしている間だけ凡例を出す。
+ */
+function UserLegend({ users }: { users: UserOption[] }) {
+  return (
+    <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      {users.map((user) => (
+        <li key={user.email} className="flex items-center gap-1.5">
+          <span className={cn("size-2.5 shrink-0", ACCENT_COLORS[user.color].dot)} aria-hidden />
+          {user.name}
+        </li>
+      ))}
+      {/* 担当者が未設定のタスクはこの色になる（features/calendar/queries.ts） */}
+      <li className="flex items-center gap-1.5">
+        <span className={cn("size-2.5 shrink-0", ACCENT_COLORS.gray.dot)} aria-hidden />
+        未割当
+      </li>
+    </ul>
   );
 }
 

@@ -2,15 +2,24 @@ import { cookies } from "next/headers";
 import { requireSession } from "@/lib/dal";
 import { displayName } from "@/lib/env";
 import { AppShell } from "@/components/layout/app-shell";
-import { SIDEBAR_COOKIE } from "@/components/layout/sidebar-cookie";
+import {
+  NAV_GROUPS_COOKIE,
+  SIDEBAR_COOKIE,
+  parseClosedGroups,
+} from "@/components/layout/sidebar-cookie";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession();
-  const collapsed = (await cookies()).get(SIDEBAR_COOKIE)?.value === "1";
+  const cookieStore = await cookies();
+
+  // 初期描画の時点で正しい状態にしておく（クライアントで直すとちらつく）
+  const collapsed = cookieStore.get(SIDEBAR_COOKIE)?.value === "1";
+  const closedGroups = parseClosedGroups(cookieStore.get(NAV_GROUPS_COOKIE)?.value);
 
   return (
     <AppShell
       defaultCollapsed={collapsed}
+      defaultClosedGroups={closedGroups}
       name={displayName(session.email) ?? session.email}
       email={session.email}
     >

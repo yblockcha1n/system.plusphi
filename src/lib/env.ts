@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import { colorFromSeed, type AccentColor } from "@/lib/colors";
 
 const base64Bytes = (value: string) => Buffer.from(value, "base64").length;
 
@@ -8,6 +9,11 @@ export type AdminUser = {
   passwordHash: string;
   /** 画面に出す表示名（例: 渡邉）。省略時はメールアドレスを表示する。 */
   name: string;
+  /**
+   * カレンダーを「担当者」で色分けするときの識別色。
+   * env には書かせず、メールアドレスから導出する（誰にでも必ず色が付く）。
+   */
+  color: AccentColor;
 };
 
 /**
@@ -47,7 +53,12 @@ const adminUsers = z
         continue;
       }
 
-      users.push({ email, passwordHash, name: rawName?.trim() || email });
+      users.push({
+        email,
+        passwordHash,
+        name: rawName?.trim() || email,
+        color: colorFromSeed(email),
+      });
     }
 
     if (users.length === 0) {
@@ -84,10 +95,10 @@ export function findAdminUser(email: string): AdminUser | undefined {
 }
 
 /** 担当者 / 検収者の選択肢。ハッシュは絶対に含めない（クライアントへ渡すため）。 */
-export type UserOption = { email: string; name: string };
+export type UserOption = { email: string; name: string; color: AccentColor };
 
 export function listUsers(): UserOption[] {
-  return env.ADMIN_USERS.map(({ email, name }) => ({ email, name }));
+  return env.ADMIN_USERS.map(({ email, name, color }) => ({ email, name, color }));
 }
 
 /**
@@ -97,4 +108,14 @@ export function listUsers(): UserOption[] {
 export function displayName(email: string | null): string | null {
   if (!email) return null;
   return findAdminUser(email)?.name ?? email;
+}
+
+/**
+ * メールアドレスを識別色に解決する。displayName と同じく、ADMIN_USERS から外れた
+ * 利用者の行も残るため、その場合も同じ導出で色を返す（凡例には出ないが色は付く）。
+ * 担当者が未設定のときだけ gray = 「未割当」になる。
+ */
+export function userColor(email: string | null): AccentColor {
+  if (!email) return "gray";
+  return findAdminUser(email)?.color ?? colorFromSeed(email.trim().toLowerCase());
 }

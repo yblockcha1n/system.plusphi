@@ -15,8 +15,8 @@ import {
   startOfDay,
 } from "@/lib/datetime";
 import { Field } from "@/components/shared/field";
+import { TimeField } from "@/components/shared/time-field";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
@@ -109,16 +109,12 @@ export function DateTimeField({
         </Popover>
 
         {mode === "datetime" && (
-          <Input
-            type="time"
-            aria-label={`${label}の時刻`}
+          <TimeField
+            label={label}
             value={timePart}
             // 日付が未選択なら時刻だけ持っていても意味がないので触らせない
             disabled={!datePart}
-            onChange={(changeEvent) =>
-              setValue(compose(datePart, changeEvent.target.value))
-            }
-            className="w-24 shrink-0"
+            onChange={(next) => setValue(compose(datePart, next))}
           />
         )}
 
