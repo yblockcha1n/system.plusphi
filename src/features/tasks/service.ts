@@ -14,6 +14,7 @@ export async function saveTask(session: SessionPayload, input: unknown): Promise
   const parsed = taskFormSchema.safeParse({
     id: idField(input),
     projectId: textField(input, "projectId"),
+    taskTypeId: textField(input, "taskTypeId"),
     title: textField(input, "title"),
     detail: textField(input, "detail"),
     status: textField(input, "status"),
@@ -28,11 +29,23 @@ export async function saveTask(session: SessionPayload, input: unknown): Promise
     return toErrorState(parsed.error);
   }
 
-  const { id, projectId, title, detail, status, startsAt, endsAt, deadlineAt, assignee, reviewer } =
-    parsed.data;
+  const {
+    id,
+    projectId,
+    taskTypeId,
+    title,
+    detail,
+    status,
+    startsAt,
+    endsAt,
+    deadlineAt,
+    assignee,
+    reviewer,
+  } = parsed.data;
 
   const values = {
     project_id: projectId,
+    task_type_id: taskTypeId,
     title,
     detail,
     status,

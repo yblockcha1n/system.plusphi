@@ -4,6 +4,7 @@ import {
   HouseIcon,
   KeyRoundIcon,
   ListChecksIcon,
+  TagsIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -51,6 +52,18 @@ export const navGroups: NavGroup[] = [
     label: "共有情報",
     items: [
       { href: "/credentials", label: "クレデンシャル", shortLabel: "鍵", icon: KeyRoundIcon },
+    ],
+  },
+  {
+    id: "settings",
+    label: "設定",
+    items: [
+      {
+        href: "/settings/task-types",
+        label: "タスク種別",
+        shortLabel: "種別",
+        icon: TagsIcon,
+      },
     ],
   },
 ];

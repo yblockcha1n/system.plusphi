@@ -28,9 +28,12 @@ type TimeGridViewProps = {
   days: Date[];
   entries: CalendarEntry[];
   todayKey: string;
+  /** "YYYY-MM-DD" → 祝日名。 */
+  holidays: Record<string, string>;
   onSelectRange: (start: Date, end: Date) => void;
   onSelectDay: (day: Date) => void;
-  onSelectEntry: (entry: CalendarEntry) => void;
+  /** 第2引数は確認カードを寄せる先。押された帯そのものを渡す。 */
+  onSelectEntry: (entry: CalendarEntry, anchor: HTMLElement) => void;
 };
 
 type Selection = { column: number; fromMin: number; toMin: number };
@@ -39,6 +42,7 @@ export function TimeGridView({
   days,
   entries,
   todayKey,
+  holidays,
   onSelectRange,
   onSelectDay,
   onSelectEntry,
@@ -94,29 +98,34 @@ export function TimeGridView({
         <div className="w-12 shrink-0 border-r sm:w-14" />
         <div className="grid flex-1" style={{ gridTemplateColumns: columns }}>
           {days.map((day) => {
+            const key = dateKey(day);
             const { weekday, day: dayNumber } = partsOf(day);
-            const isToday = dateKey(day) === todayKey;
+            const isToday = key === todayKey;
+            const holiday = holidays[key];
 
             return (
               <button
-                key={dateKey(day)}
+                key={key}
                 type="button"
                 onClick={() => onSelectDay(day)}
+                title={holiday}
                 className="flex flex-col items-center gap-0.5 border-r py-1.5 transition-colors last:border-r-0 hover:bg-muted"
               >
                 <span
                   className={cn(
-                    "text-[0.625rem]",
-                    weekday === 0 && "text-destructive",
-                    weekday === 6 && "text-project-blue",
-                    weekday !== 0 && weekday !== 6 && "text-muted-foreground"
+                    "max-w-full truncate px-1 text-[0.625rem]",
+                    // 祝日は曜日の位置に名前を出す。日曜と同じ赤で揃える。
+                    (holiday || weekday === 0) && "text-destructive",
+                    !holiday && weekday === 6 && "text-project-blue",
+                    !holiday && weekday !== 0 && weekday !== 6 && "text-muted-foreground"
                   )}
                 >
-                  {WEEKDAY_LABELS[weekday]}
+                  {holiday ?? WEEKDAY_LABELS[weekday]}
                 </span>
                 <span
                   className={cn(
                     "min-w-6 px-1 text-sm leading-6 font-medium",
+                    !isToday && holiday && "text-destructive",
                     isToday && "bg-foreground text-background"
                   )}
                   data-numeric
@@ -203,7 +212,7 @@ function DayColumn({
   onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
   onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void;
   onPointerUp: () => void;
-  onSelectEntry: (entry: CalendarEntry) => void;
+  onSelectEntry: (entry: CalendarEntry, anchor: HTMLElement) => void;
 }) {
   const blocks = layoutTimedEntries(entriesForColumn(entries, day), day);
 
@@ -250,7 +259,7 @@ function DayColumn({
             type="button"
             onClick={(clickEvent) => {
               clickEvent.stopPropagation();
-              onSelectEntry(block.entry);
+              onSelectEntry(block.entry, clickEvent.currentTarget);
             }}
             onPointerDown={(pointerEvent) => pointerEvent.stopPropagation()}
             title={block.entry.title}

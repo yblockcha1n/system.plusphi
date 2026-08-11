@@ -15,7 +15,14 @@ export function buildProjectLookup(rows: Pick<ProjectRow, "id" | "name" | "color
   );
 }
 
-export function mapTaskRow(row: TaskRow, projects: ProjectLookup): TaskItem {
+/** 種別 id → 名称。タスクは id しか持たないため、表示用に引き当てる。 */
+export type TaskTypeLookup = Map<string, string>;
+
+export function mapTaskRow(
+  row: TaskRow,
+  projects: ProjectLookup,
+  taskTypes?: TaskTypeLookup
+): TaskItem {
   const project = row.project_id ? projects.get(row.project_id) : undefined;
 
   return {
@@ -23,6 +30,9 @@ export function mapTaskRow(row: TaskRow, projects: ProjectLookup): TaskItem {
     projectId: row.project_id,
     projectName: project?.name ?? null,
     projectColor: project?.color ?? "gray",
+    taskTypeId: row.task_type_id,
+    // 種別のマスタを渡していない呼び出し（カレンダー等、名称を使わない箇所）では null
+    taskTypeName: (row.task_type_id && taskTypes?.get(row.task_type_id)) || null,
     title: row.title,
     detail: row.detail,
     status: toTaskStatus(row.status),
@@ -87,10 +97,11 @@ export async function getTasks(options: TaskQueryOptions = {}): Promise<TaskItem
     query = query.eq("reviewer", session.email);
   }
 
-  const [tasksResult, projectsResult] = await Promise.all([
+  const [tasksResult, projectsResult, taskTypesResult] = await Promise.all([
     query,
     // 引き当てに使うのは名前と色だけ。説明文まで運ぶ必要はない。
     supabase.from("projects").select("id, name, color"),
+    supabase.from("task_types").select("id, name"),
   ]);
 
   if (tasksResult.error) {
@@ -99,8 +110,15 @@ export async function getTasks(options: TaskQueryOptions = {}): Promise<TaskItem
   if (projectsResult.error) {
     throw new Error(`プロジェクトの取得に失敗しました: ${projectsResult.error.message}`);
   }
+  if (taskTypesResult.error) {
+    throw new Error(`タスク種別の取得に失敗しました: ${taskTypesResult.error.message}`);
+  }
 
   const projects = buildProjectLookup(projectsResult.data);
+  // 閉じた種別も含めて引く。過去のタスクに付いている種別名は出したいため。
+  const taskTypes: TaskTypeLookup = new Map(
+    taskTypesResult.data.map((row) => [row.id, row.name])
+  );
 
-  return sortTasks(tasksResult.data.map((row) => mapTaskRow(row, projects)));
+  return sortTasks(tasksResult.data.map((row) => mapTaskRow(row, projects, taskTypes)));
 }

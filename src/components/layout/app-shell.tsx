@@ -200,8 +200,13 @@ export function AppShell({
 
         <main className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">{children}</main>
 
-        {/* モバイルのボトムナビ。ホーム画面から起動したときの下端余白も確保する。 */}
-        <nav className="safe-bottom grid shrink-0 grid-cols-5 border-t bg-background lg:hidden">
+        {/* モバイルのボトムナビ。ホーム画面から起動したときの下端余白も確保する。
+            列数は項目数に追従させる（Tailwind のクラスは静的なので style で指定）。
+            サイドバーは lg 未満で隠れるため、ここに全項目を出さないと辿り着けない。 */}
+        <nav
+          className="safe-bottom grid shrink-0 border-t bg-background lg:hidden"
+          style={{ gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))` }}
+        >
           {navItems.map((item) => {
             const Icon = item.icon;
 

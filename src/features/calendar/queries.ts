@@ -2,8 +2,9 @@ import "server-only";
 import { requireSession } from "@/lib/dal";
 import { displayName, userColor } from "@/lib/env";
 import { supabase } from "@/lib/supabase";
-import { addMinutes } from "@/lib/datetime";
+import { addMinutes, dateKey } from "@/lib/datetime";
 import { toProjectColor } from "@/features/projects/schema";
+import { expandOccurrences, toRecurrence } from "@/features/calendar/recurrence";
 import { buildProjectLookup, mapTaskRow } from "@/features/tasks/queries";
 import type {
   CalendarColorMode,
@@ -32,20 +33,36 @@ export type CalendarData = {
 export async function getCalendarData(
   rangeStart: Date,
   rangeEnd: Date,
-  colorMode: CalendarColorMode = "project"
+  // 既定は担当者。ホームの「今日の予定」もカレンダーと同じ色で出したいため
+  // （toCalendarColorMode の既定と揃えること）。
+  colorMode: CalendarColorMode = "user"
 ): Promise<CalendarData> {
   await requireSession();
 
   const startIso = rangeStart.toISOString();
   const endIso = rangeEnd.toISOString();
+  // recurrence_until は date 型なので、比較には日付キーを使う
+  const startDateKey = dateKey(rangeStart);
 
   // 終了が未設定のタスク（開始から1時間の帯）と締切の帯（30分）を取りこぼさない
   // ぶんだけ手前に広げる。厳密な重なり判定はこのあと toTaskEntries が行う。
   const paddedStartIso = addMinutes(rangeStart, -60).toISOString();
 
   const [eventsResult, tasksResult, projectsResult] = await Promise.all([
-    // 半開区間の重なり判定: starts_at < rangeEnd かつ ends_at > rangeStart
-    supabase.from("events").select("*").lt("starts_at", endIso).gt("ends_at", startIso),
+    supabase
+      .from("events")
+      .select("*")
+      .or(
+        [
+          // 単発: 半開区間の重なり判定（starts_at < rangeEnd かつ ends_at > rangeStart）
+          `and(recurrence_freq.is.null,starts_at.lt."${endIso}",ends_at.gt."${startIso}")`,
+          // 繰り返し: starts_at は 1 回目なので範囲より前でも対象になりうる。
+          // 終わり（recurrence_until）が範囲より前のものだけを落とす。
+          // 実際にどの回が範囲に掛かるかは expandOccurrences が決める。
+          `and(recurrence_freq.not.is.null,starts_at.lt."${endIso}",recurrence_until.is.null)`,
+          `and(recurrence_freq.not.is.null,starts_at.lt."${endIso}",recurrence_until.gte."${startDateKey}")`,
+        ].join(",")
+      ),
     // タスクは「作業期間の帯」か「締切の帯」が範囲に掛かるものだけ引く。
     // カレンダーは月でも 6 週ぶんなので、全件引くと表示に使わない行が大半になる。
     supabase
@@ -91,6 +108,9 @@ export async function getCalendarData(
       startsAt: row.starts_at,
       endsAt: row.ends_at,
       allDay: row.all_day,
+      assignees: row.assignees ?? [],
+      assigneeNames: (row.assignees ?? []).map((email) => displayName(email) ?? email),
+      recurrence: toRecurrence(row),
       createdBy: row.created_by,
       createdByName: displayName(row.created_by),
     };
@@ -101,26 +121,44 @@ export async function getCalendarData(
   return {
     events,
     entries: [
-      ...toEventEntries(events, colorMode),
+      ...toEventEntries(events, rangeStart, rangeEnd, colorMode),
       ...toTaskEntries(tasks, rangeStart, rangeEnd, colorMode),
     ],
   };
 }
 
-/** 予定に担当者の概念は無いので、「担当者」で色分けするときは作成者を使う。 */
-function toEventEntries(events: EventItem[], colorMode: CalendarColorMode): CalendarEntry[] {
-  return events.map((event) => ({
-    key: `event:${event.id}`,
-    kind: "event",
-    id: event.id,
-    title: event.title,
-    startsAt: event.startsAt,
-    endsAt: event.endsAt,
-    allDay: event.allDay,
-    color: colorMode === "user" ? userColor(event.createdBy) : event.projectColor,
-    projectName: event.projectName,
-    ownerName: event.createdByName,
-  }));
+/**
+ * 予定を帯にする。繰り返しはここで範囲ぶんだけ展開するので、1 つの予定から
+ * 複数の帯が出る。key に日付を混ぜて回ごとに一意にする。
+ *
+ * 「担当者」で色分けするときは先頭の担当者を使う。複数人を 1 色では表せないため、
+ * 誰も指定されていなければ作成者に落とす。
+ */
+function toEventEntries(
+  events: EventItem[],
+  rangeStart: Date,
+  rangeEnd: Date,
+  colorMode: CalendarColorMode
+): CalendarEntry[] {
+  return events.flatMap((event) => {
+    const owner = event.assignees[0] ?? event.createdBy;
+    const ownerName = event.assigneeNames[0] ?? event.createdByName;
+
+    return expandOccurrences(event, rangeStart, rangeEnd).map((occurrence) => ({
+      key: `event:${event.id}:${occurrence.occurrenceDate}`,
+      kind: "event" as const,
+      id: event.id,
+      title: event.title,
+      startsAt: occurrence.startsAt,
+      endsAt: occurrence.endsAt,
+      allDay: event.allDay,
+      color: colorMode === "user" ? userColor(owner) : event.projectColor,
+      projectName: event.projectName,
+      ownerName,
+      occurrenceDate: occurrence.occurrenceDate,
+      repeating: event.recurrence !== null,
+    }));
+  });
 }
 
 /** 締切だけの帯に持たせる長さ。時間軸ビューで潰れないよう 30 分幅にする。 */

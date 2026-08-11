@@ -59,6 +59,10 @@ export type PushSubscriptionInput = z.infer<typeof pushSubscriptionSchema>;
 export const dedupeKey = {
   /** 締切は「その日ぶん」で 1 回。日付が変われば翌日また通知する。 */
   deadline: (taskId: string, dateKey: string) => `deadline:${taskId}:${dateKey}`,
-  /** 予定の開始前リマインドは 1 予定につき 1 回だけ。 */
-  eventSoon: (eventId: string) => `event-soon:${eventId}`,
+  /**
+   * 予定の開始前リマインドは「その回」につき 1 回だけ。
+   * 繰り返しは同じ予定 id で何度も来るので、回を表す日付までキーに含める。
+   */
+  eventSoon: (eventId: string, occurrenceDate: string) =>
+    `event-soon:${eventId}:${occurrenceDate}`,
 };

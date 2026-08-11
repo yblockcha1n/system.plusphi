@@ -9,6 +9,7 @@ import {
   type TaskItem,
 } from "@/features/tasks/schema";
 import type { ProjectOption } from "@/features/projects/schema";
+import type { TaskTypeOption } from "@/features/task-types/schema";
 import type { UserOption } from "@/lib/env";
 import { NONE_VALUE } from "@/lib/form";
 import { toDateTimeInput } from "@/lib/datetime";
@@ -38,6 +39,7 @@ type TaskSheetProps = {
   /** 新規作成時にあらかじめ選んでおくプロジェクト */
   defaultProjectId?: string | null;
   projects: ProjectOption[];
+  taskTypes: TaskTypeOption[];
   users: UserOption[];
 };
 
@@ -50,6 +52,7 @@ export function TaskSheet({
   task,
   defaultProjectId,
   projects,
+  taskTypes,
   users,
 }: TaskSheetProps) {
   const { state, pending, onSubmit } = useApiForm(
@@ -59,11 +62,13 @@ export function TaskSheet({
   const isEdit = Boolean(task);
 
   const initialProject = task?.projectId ?? defaultProjectId ?? NONE_VALUE;
+  const initialTaskType = task?.taskTypeId ?? NONE_VALUE;
   const initialAssignee = task?.assignee ?? NONE_VALUE;
   const initialReviewer = task?.reviewer ?? NONE_VALUE;
   const initialStatus = task?.status ?? "todo";
 
   const [projectId, setProjectId] = useState<string>(initialProject);
+  const [taskTypeId, setTaskTypeId] = useState<string>(initialTaskType);
   const [assignee, setAssignee] = useState<string>(initialAssignee);
   const [reviewer, setReviewer] = useState<string>(initialReviewer);
   const [status, setStatus] = useState<string>(initialStatus);
@@ -71,6 +76,7 @@ export function TaskSheet({
   // 開き直したときに前回の入力・選択が残らないようにする
   const formKey = useFormResetKey(open, () => {
     setProjectId(initialProject);
+    setTaskTypeId(initialTaskType);
     setAssignee(initialAssignee);
     setReviewer(initialReviewer);
     setStatus(initialStatus);
@@ -79,6 +85,21 @@ export function TaskSheet({
   const projectOptions: SelectOption[] = [
     { value: NONE_VALUE, label: "プロジェクトなし（未分類）" },
     ...projects.map((project) => ({ value: project.id, label: project.name })),
+  ];
+
+  // 編集中のタスクに付いている種別が「使用停止」にされていると選択肢から消える。
+  // そのまま保存すると種別が黙って外れてしまうので、現在値だけは足しておく。
+  const missingCurrentType =
+    task?.taskTypeId && !taskTypes.some((taskType) => taskType.id === task.taskTypeId)
+      ? [{ id: task.taskTypeId, name: `${task.taskTypeName ?? "不明な種別"}（使用停止中）` }]
+      : [];
+
+  const taskTypeOptions: SelectOption[] = [
+    { value: NONE_VALUE, label: "種別なし" },
+    ...[...taskTypes, ...missingCurrentType].map((taskType) => ({
+      value: taskType.id,
+      label: taskType.name,
+    })),
   ];
 
   const userOptions: SelectOption[] = [
@@ -148,6 +169,17 @@ export function TaskSheet({
                 errors={state.fieldErrors?.status}
               />
             </div>
+
+            <SelectField
+              label="種別"
+              id="taskTypeId"
+              name="taskTypeId"
+              value={taskTypeId}
+              onValueChange={setTaskTypeId}
+              options={taskTypeOptions}
+              errors={state.fieldErrors?.taskTypeId}
+              hint="選択肢は「設定 › タスク種別」で追加・並べ替えできます。"
+            />
 
             <div className="grid gap-5 @md:grid-cols-2">
               <DateTimeField

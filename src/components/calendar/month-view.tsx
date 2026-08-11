@@ -17,8 +17,10 @@ type MonthViewProps = {
   anchor: Date;
   entries: CalendarEntry[];
   todayKey: string;
+  /** "YYYY-MM-DD" → 祝日名。 */
+  holidays: Record<string, string>;
   onSelectDay: (day: Date) => void;
-  onSelectEntry: (entry: CalendarEntry) => void;
+  onSelectEntry: (entry: CalendarEntry, anchor: HTMLElement) => void;
 };
 
 export function MonthView({
@@ -26,6 +28,7 @@ export function MonthView({
   anchor,
   entries,
   todayKey,
+  holidays,
   onSelectDay,
   onSelectEntry,
 }: MonthViewProps) {
@@ -61,6 +64,7 @@ export function MonthView({
             anchorMonth={anchorMonth}
             entries={entries}
             todayKey={todayKey}
+            holidays={holidays}
             onSelectDay={onSelectDay}
             onSelectEntry={onSelectEntry}
           />
@@ -75,6 +79,7 @@ function WeekRow({
   anchorMonth,
   entries,
   todayKey,
+  holidays,
   onSelectDay,
   onSelectEntry,
 }: {
@@ -82,8 +87,9 @@ function WeekRow({
   anchorMonth: number;
   entries: CalendarEntry[];
   todayKey: string;
+  holidays: Record<string, string>;
   onSelectDay: (day: Date) => void;
-  onSelectEntry: (entry: CalendarEntry) => void;
+  onSelectEntry: (entry: CalendarEntry, anchor: HTMLElement) => void;
 }) {
   const { lanes, overflowByCol } = buildWeekLanes(week, entries, MAX_LANES);
 
@@ -108,20 +114,30 @@ function WeekRow({
       {/* 帯は背景の上に重ねる。ボタン以外はクリックを背景へ通す。 */}
       <div className="pointer-events-none relative grid grid-cols-7 gap-y-0.5 px-0.5 pb-1">
         {week.map((day, column) => {
+          const key = dateKey(day);
           const { day: dayNumber, month } = partsOf(day);
-          const isToday = dateKey(day) === todayKey;
+          const isToday = key === todayKey;
+          const holiday = holidays[key];
 
           return (
             <div
-              key={dateKey(day)}
+              key={key}
               style={{ gridColumn: column + 1, gridRow: 1 }}
-              className="px-1 pt-1 text-right"
+              className="flex items-center gap-1 px-1 pt-1"
             >
+              {/* 祝日名。狭いセルで日付を押し出さないよう、入りきらなければ省略する。 */}
+              {holiday && (
+                <span className="min-w-0 flex-1 truncate text-[0.625rem] leading-5 text-destructive">
+                  {holiday}
+                </span>
+              )}
+
               <span
                 className={cn(
-                  "inline-block min-w-5 px-1 text-xs leading-5",
+                  "ml-auto inline-block min-w-5 px-1 text-right text-xs leading-5",
                   isToday && "bg-foreground font-semibold text-background",
-                  !isToday && month !== anchorMonth && "text-muted-foreground"
+                  !isToday && holiday && "text-destructive",
+                  !isToday && !holiday && month !== anchorMonth && "text-muted-foreground"
                 )}
                 data-numeric
               >

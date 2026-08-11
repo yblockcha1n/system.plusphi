@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
@@ -15,6 +16,7 @@ import {
   type EventItem,
 } from "@/features/calendar/schema";
 import type { ProjectOption } from "@/features/projects/schema";
+import type { TaskTypeOption } from "@/features/task-types/schema";
 import type { TaskItem } from "@/features/tasks/schema";
 import { ACCENT_COLORS } from "@/lib/colors";
 import type { UserOption } from "@/lib/env";
@@ -33,7 +35,9 @@ import {
 } from "@/lib/datetime";
 import { MonthView, defaultSlotForDay } from "@/components/calendar/month-view";
 import { TimeGridView } from "@/components/calendar/time-grid-view";
+import { EntryDetail } from "@/components/calendar/entry-detail";
 import { EventSheet, type EventDraft } from "@/components/calendar/event-sheet";
+import { Popover, PopoverContent } from "@/components/ui/popover";
 import { TaskSheet } from "@/components/tasks/task-sheet";
 import { ConfirmDeleteDialog } from "@/components/shared/confirm-delete-dialog";
 import { useSheetTarget } from "@/components/shared/use-sheet-target";
@@ -52,7 +56,10 @@ type CalendarShellProps = {
   events: EventItem[];
   tasks: TaskItem[];
   projects: ProjectOption[];
+  taskTypes: TaskTypeOption[];
   users: UserOption[];
+  /** 表示範囲に掛かる日本の祝日（"YYYY-MM-DD" → 名称）。サーバーで求めたもの。 */
+  holidays: Record<string, string>;
 };
 
 export function CalendarShell({
@@ -64,7 +71,9 @@ export function CalendarShell({
   events,
   tasks,
   projects,
+  taskTypes,
   users,
+  holidays,
 }: CalendarShellProps) {
   const router = useRouter();
 
@@ -74,9 +83,44 @@ export function CalendarShell({
 
   // 予定シートは「既存の編集」と「クリック位置からの新規作成」の両方を扱うので、
   // どちらか一方だけが入った1つの対象として持つ。
-  const eventSheet = useSheetTarget<{ event?: EventItem; draft?: EventDraft }>();
+  // occurrenceDate は繰り返しの「何回目を開いたか」。「この回だけ削除」に要る。
+  const eventSheet = useSheetTarget<{
+    event?: EventItem;
+    draft?: EventDraft;
+    occurrenceDate?: string;
+  }>();
   const taskSheet = useSheetTarget<TaskItem>();
-  const deleteDialog = useSheetTarget<EventItem>();
+  const deleteDialog = useSheetTarget<{
+    event: EventItem;
+    scope: "occurrence" | "series";
+    occurrenceDate?: string;
+  }>();
+  // カレンダーからもタスクを消せるようにする（一覧まで戻らずに済むように）
+  const taskDeleteDialog = useSheetTarget<TaskItem>();
+
+  /**
+   * 帯を押したときに出す確認カード。いきなり編集フォームを開かず、まず内容を見せる。
+   *
+   * anchor には押された帯の DOM 要素を入れ、Popover をそこへ寄せる
+   * （Base UI の Positioner は anchor を受け取れるので、トリガーを持たない
+   *   制御された Popover として使える）。
+   */
+  const [detail, setDetail] = useState<{
+    entry: CalendarEntry;
+    anchor: HTMLElement;
+  } | null>(null);
+
+  const closeDetail = () => setDetail(null);
+
+  const detailEvent =
+    detail?.entry.kind === "event"
+      ? (events.find((item) => item.id === detail.entry.id) ?? null)
+      : null;
+
+  const detailTask =
+    detail && detail.entry.kind !== "event"
+      ? (tasks.find((item) => item.id === detail.entry.id) ?? null)
+      : null;
 
   /**
    * 表示状態はすべて URL に載せる。指定しなかったぶんは現在の値を引き継ぐので、
@@ -105,16 +149,50 @@ export function CalendarShell({
     });
   };
 
-  const selectEntry = (entry: CalendarEntry) => {
+  /** 確認カードの「編集」。カードを閉じてから、対応する編集シートを開く。 */
+  const editFromDetail = () => {
+    if (!detail) return;
+
+    const { entry } = detail;
+    closeDetail();
+
     if (entry.kind === "event") {
-      const found = events.find((item) => item.id === entry.id);
-      if (found) eventSheet.show({ event: found });
+      // 繰り返しは大元の 1 件を編集する。押された回は削除のために覚えておく。
+      if (detailEvent) {
+        eventSheet.show({ event: detailEvent, occurrenceDate: entry.occurrenceDate });
+      }
       return;
     }
 
     // タスク由来の帯（作業期間・締切）はタスクの編集を開く
-    const task = tasks.find((item) => item.id === entry.id);
-    if (task) taskSheet.show(task);
+    if (detailTask) taskSheet.show(detailTask);
+  };
+
+  /**
+   * 確認カードの「削除」。
+   *
+   * 繰り返しの予定はここからだと「この回だけ」に倒す。押した回が特定できている
+   * うえ、定例を丸ごと消したい場面はまれなため。すべての回を消すときは
+   * 編集シートの削除メニューから行う。
+   */
+  const deleteFromDetail = () => {
+    if (!detail) return;
+
+    const { entry } = detail;
+    closeDetail();
+
+    if (entry.kind === "event") {
+      if (!detailEvent) return;
+
+      deleteDialog.show({
+        event: detailEvent,
+        scope: detailEvent.recurrence ? "occurrence" : "series",
+        occurrenceDate: entry.occurrenceDate,
+      });
+      return;
+    }
+
+    if (detailTask) taskDeleteDialog.show(detailTask);
   };
 
   return (
@@ -207,31 +285,60 @@ export function CalendarShell({
           anchor={anchor}
           entries={entries}
           todayKey={todayKey}
+          holidays={holidays}
           onSelectDay={(day) => {
             const slot = defaultSlotForDay(day);
             openDraft(slot.start, slot.end);
           }}
-          onSelectEntry={selectEntry}
+          onSelectEntry={(entry, anchor) => setDetail({ entry, anchor })}
         />
       ) : (
         <TimeGridView
           days={days}
           entries={entries}
           todayKey={todayKey}
+          holidays={holidays}
           onSelectRange={(start, end) => openDraft(start, end)}
           onSelectDay={(day) => router.push(hrefFor({ view: "day", date: day }))}
-          onSelectEntry={selectEntry}
+          onSelectEntry={(entry, anchor) => setDetail({ entry, anchor })}
         />
       )}
 
-      {colorMode === "user" && <UserLegend users={users} />}
+      {/*
+        確認カード。トリガーを持たない制御された Popover として使い、
+        押された帯へ anchor で寄せる。
 
-      <p className="text-xs text-muted-foreground">
-        空いているところをクリック（週・日表示はドラッグ）すると予定を登録できます。実線はタスクの作業期間、破線は締切です。
-        {colorMode === "user"
-          ? "色は予定なら作成者、タスクなら担当者を表します。"
-          : "色は所属プロジェクトを表します。"}
-      </p>
+        triggerId は null。同じ予定が複数日・複数週にまたがると帯が複数描かれるため、
+        entry.key から id を振ると DOM 上で重複してしまう。位置決めは anchor が
+        担っており、開いた時点で焦点はカード内へ移るので実害はない。
+      */}
+      <Popover
+        open={detail !== null}
+        onOpenChange={(next) => {
+          if (!next) closeDetail();
+        }}
+        triggerId={null}
+      >
+        <PopoverContent
+          anchor={detail?.anchor ?? null}
+          align="center"
+          side="right"
+          className="w-auto p-0"
+        >
+          {detail && (
+            <EntryDetail
+              entry={detail.entry}
+              event={detailEvent}
+              task={detailTask}
+              onEdit={editFromDetail}
+              onDelete={deleteFromDetail}
+              onClose={closeDetail}
+            />
+          )}
+        </PopoverContent>
+      </Popover>
+
+      {colorMode === "user" && <UserLegend users={users} />}
 
       <EventSheet
         open={eventSheet.open}
@@ -239,7 +346,14 @@ export function CalendarShell({
         event={eventSheet.target?.event}
         draft={eventSheet.target?.draft}
         projects={projects}
-        onDelete={(event) => deleteDialog.show(event)}
+        users={users}
+        onDelete={(event, scope) =>
+          deleteDialog.show({
+            event,
+            scope,
+            occurrenceDate: eventSheet.target?.occurrenceDate,
+          })
+        }
       />
 
       <TaskSheet
@@ -247,20 +361,46 @@ export function CalendarShell({
         onOpenChange={taskSheet.onOpenChange}
         task={taskSheet.target}
         projects={projects}
+        taskTypes={taskTypes}
         users={users}
       />
 
       <ConfirmDeleteDialog
         open={deleteDialog.open}
         onOpenChange={deleteDialog.onOpenChange}
-        title={`予定「${deleteDialog.target?.title}」を削除しますか？`}
-        description="この操作は取り消せません。"
+        title={
+          deleteDialog.target?.scope === "occurrence"
+            ? `「${deleteDialog.target?.event.title}」のこの回を削除しますか？`
+            : `予定「${deleteDialog.target?.event.title}」を削除しますか？`
+        }
+        description={
+          deleteDialog.target?.scope === "occurrence"
+            ? "この回だけがカレンダーから消えます。ほかの回はそのまま残ります。"
+            : deleteDialog.target?.event.recurrence
+              ? "繰り返しのすべての回が消えます。この操作は取り消せません。"
+              : "この操作は取り消せません。"
+        }
         onConfirm={async () => {
-          const result = await api.deleteEvent(deleteDialog.target?.id as string);
+          const target = deleteDialog.target;
+          if (!target) return { status: "error" as const, message: "対象がありません。" };
+
+          const result =
+            target.scope === "occurrence" && target.occurrenceDate
+              ? await api.skipEventOccurrence(target.event.id, target.occurrenceDate)
+              : await api.deleteEvent(target.event.id);
+
           // 削除できたら、裏に残っている編集シートも閉じる
           if (result.status === "success") eventSheet.onOpenChange(false);
           return result;
         }}
+      />
+
+      <ConfirmDeleteDialog
+        open={taskDeleteDialog.open}
+        onOpenChange={taskDeleteDialog.onOpenChange}
+        title={`「${taskDeleteDialog.target?.title}」を削除しますか？`}
+        description="この操作は取り消せません。タスク一覧からも消えます。"
+        onConfirm={() => api.deleteTask(taskDeleteDialog.target?.id as string)}
       />
     </div>
   );

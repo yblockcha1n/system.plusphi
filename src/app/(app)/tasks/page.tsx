@@ -3,6 +3,7 @@ import Link from "next/link";
 import { listUsers } from "@/lib/env";
 import { getProjectOptions } from "@/features/projects/queries";
 import { getTasks } from "@/features/tasks/queries";
+import { getTaskTypeOptions } from "@/features/task-types/queries";
 import {
   TASK_SCOPES,
   TASK_SCOPE_LABELS,
@@ -23,9 +24,10 @@ export default async function TasksPage(props: PageProps<"/tasks">) {
   const scope = toTaskScope(first(searchParams.scope));
   const showDone = first(searchParams.done) === "1";
 
-  const [tasks, projects] = await Promise.all([
+  const [tasks, projects, taskTypes] = await Promise.all([
     getTasks({ scope, includeDone: showDone }),
     getProjectOptions(),
+    getTaskTypeOptions(),
   ]);
 
   const users = listUsers();
@@ -39,7 +41,7 @@ export default async function TasksPage(props: PageProps<"/tasks">) {
       <PageHeader
         title="タスク"
         description={`未完了 ${openCount} 件。状態バッジを押すと「${TASK_STATUS_LABELS.todo} / ${TASK_STATUS_LABELS.doing} / ${TASK_STATUS_LABELS.review} / ${TASK_STATUS_LABELS.done}」をその場で切り替えられます。`}
-        actions={<TaskToolbar projects={projects} users={users} />}
+        actions={<TaskToolbar projects={projects} taskTypes={taskTypes} users={users} />}
       />
 
       <div className="flex flex-wrap items-center gap-2">
@@ -76,6 +78,7 @@ export default async function TasksPage(props: PageProps<"/tasks">) {
         <TaskList
           tasks={tasks}
           projects={projects}
+          taskTypes={taskTypes}
           users={users}
           emptyMessage={
             scope === "all"

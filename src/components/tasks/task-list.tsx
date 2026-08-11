@@ -9,6 +9,7 @@ import {
   type TaskItem,
 } from "@/features/tasks/schema";
 import { PROJECT_COLORS, type ProjectOption } from "@/features/projects/schema";
+import type { TaskTypeOption } from "@/features/task-types/schema";
 import type { UserOption } from "@/lib/env";
 import {
   daysUntil,
@@ -37,6 +38,7 @@ import { cn } from "@/lib/utils";
 type TaskListProps = {
   tasks: TaskItem[];
   projects: ProjectOption[];
+  taskTypes: TaskTypeOption[];
   users: UserOption[];
   /** 新規作成時の既定プロジェクト（プロジェクト詳細から開いたとき用）。 */
   defaultProjectId?: string | null;
@@ -48,6 +50,7 @@ type TaskListProps = {
 export function TaskList({
   tasks,
   projects,
+  taskTypes,
   users,
   defaultProjectId,
   showProject = true,
@@ -80,6 +83,7 @@ export function TaskList({
         task={editSheet.target}
         defaultProjectId={defaultProjectId}
         projects={projects}
+        taskTypes={taskTypes}
         users={users}
       />
 
@@ -170,6 +174,13 @@ function TaskRow({
                 aria-hidden
               />
               {task.projectName ?? "未分類"}
+            </span>
+          )}
+
+          {/* 種別。色は付けずに枠だけで示す（プロジェクトの色と競合させない）。 */}
+          {task.taskTypeName && (
+            <span className="border px-1.5 py-0.5 text-[0.625rem] whitespace-nowrap">
+              {task.taskTypeName}
             </span>
           )}
 

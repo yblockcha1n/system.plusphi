@@ -5,6 +5,7 @@ import { ArrowLeftIcon } from "lucide-react";
 import { listUsers } from "@/lib/env";
 import { getProject, getProjectOptions } from "@/features/projects/queries";
 import { getTasks } from "@/features/tasks/queries";
+import { getTaskTypeOptions } from "@/features/task-types/queries";
 import { PROJECT_COLORS } from "@/features/projects/schema";
 import { PageHeader, Panel, PanelHeader } from "@/components/shared/page-header";
 import { TaskList } from "@/components/tasks/task-list";
@@ -27,9 +28,10 @@ export default async function ProjectDetailPage(props: PageProps<"/projects/[id]
     notFound();
   }
 
-  const [tasks, projects] = await Promise.all([
+  const [tasks, projects, taskTypes] = await Promise.all([
     getTasks({ projectId: project.id }),
     getProjectOptions(),
+    getTaskTypeOptions(),
   ]);
 
   const users = listUsers();
@@ -67,7 +69,12 @@ export default async function ProjectDetailPage(props: PageProps<"/projects/[id]
           </span>
         }
         actions={
-          <TaskToolbar projects={projects} users={users} defaultProjectId={project.id} />
+          <TaskToolbar
+            projects={projects}
+            taskTypes={taskTypes}
+            users={users}
+            defaultProjectId={project.id}
+          />
         }
       />
 
@@ -86,6 +93,7 @@ export default async function ProjectDetailPage(props: PageProps<"/projects/[id]
         <TaskList
           tasks={tasks}
           projects={projects}
+          taskTypes={taskTypes}
           users={users}
           defaultProjectId={project.id}
           showProject={false}

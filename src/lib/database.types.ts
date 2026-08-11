@@ -35,9 +35,24 @@ export type ProjectRow = {
   updated_at: string;
 };
 
+/** タスク種別のマスタ。0007 のマイグレーションで追加。 */
+export type TaskTypeRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  sort_order: number;
+  /** null = 利用中。値が入っていれば選択肢から外れる（過去のタスクの表示は残る）。 */
+  archived_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type TaskRow = {
   id: string;
   project_id: string | null;
+  /** 種別のマスタ参照。null = 種別なし。0007 で追加。 */
+  task_type_id: string | null;
   title: string;
   detail: string | null;
   status: string;
@@ -63,6 +78,16 @@ export type EventRow = {
   starts_at: string;
   ends_at: string;
   all_day: boolean;
+  /** 担当者のメールアドレス。予定は複数人が関わるので配列。0006 で追加。 */
+  assignees: string[];
+  /** null = 繰り返さない。値が入っていれば starts_at が 1 回目を表す。0006 で追加。 */
+  recurrence_freq: "daily" | "weekly" | "monthly" | null;
+  /** 「隔週」= weekly かつ 2。 */
+  recurrence_interval: number;
+  /** 繰り返しの終わり（この日を含む）。"YYYY-MM-DD"。null なら終わりなし。 */
+  recurrence_until: string | null;
+  /** 「この回だけ削除」した日（"YYYY-MM-DD" の配列）。 */
+  recurrence_excluded_dates: string[];
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -137,6 +162,12 @@ export type Database = {
         Update: Partial<ProjectRow>;
         Relationships: [];
       };
+      task_types: {
+        Row: TaskTypeRow;
+        Insert: Insertable<TaskTypeRow, "name">;
+        Update: Partial<TaskTypeRow>;
+        Relationships: [];
+      };
       tasks: {
         Row: TaskRow;
         Insert: Insertable<TaskRow, "title">;
@@ -147,6 +178,13 @@ export type Database = {
             columns: ["project_id"];
             isOneToOne: false;
             referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "tasks_task_type_id_fkey";
+            columns: ["task_type_id"];
+            isOneToOne: false;
+            referencedRelation: "task_types";
             referencedColumns: ["id"];
           },
         ];

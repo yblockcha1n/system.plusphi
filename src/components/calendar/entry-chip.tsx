@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils";
 
 type EntryChipProps = {
   entry: CalendarEntry;
-  onSelect: (entry: CalendarEntry) => void;
+  /** 第2引数は確認カードを寄せる先。押されたチップそのものを渡す。 */
+  onSelect: (entry: CalendarEntry, anchor: HTMLElement) => void;
   /** 時刻を省いてタイトルだけ出す（終日や横棒のとき）。 */
   hideTime?: boolean;
   className?: string;
@@ -23,7 +24,7 @@ export function EntryChip({ entry, onSelect, hideTime, className }: EntryChipPro
       onClick={(clickEvent) => {
         // 背景のセルにあるスロット作成のクリックまで伝播させない
         clickEvent.stopPropagation();
-        onSelect(entry);
+        onSelect(entry, clickEvent.currentTarget);
       }}
       // 色だけでは誰の・どのプロジェクトの帯か断定できないので、hover で補う
       title={[entry.projectName && `[${entry.projectName}]`, entry.title, entry.ownerName]

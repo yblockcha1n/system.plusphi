@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { sendPushOnce } from "@/lib/push";
 import { addMinutes, dateKey, formatTime, startOfDay } from "@/lib/datetime";
 import { dedupeKey } from "@/features/push/schema";
+import { expandOccurrences, toRecurrence } from "@/features/calendar/recurrence";
 
 /**
  * Supabase Cron から定期的に呼ばれる通知。
@@ -79,43 +80,80 @@ async function notifyDeadlines(now: Date): Promise<number> {
 }
 
 /**
- * 予定の開始前リマインド。宛先は予定の作成者。
+ * 予定の開始前リマインド。宛先は担当者全員、1 人も指定が無ければ作成者。
  *
- * 予定には担当者の概念が無いため、カレンダーの色分けと同じ考え方で
- * 作成者を「その予定の持ち主」として扱う。
+ * 繰り返しの予定は starts_at が「1 回目」なので、その列だけで絞ると 2 回目以降が
+ * 引っかからない。カレンダー表示と同じ expandOccurrences で窓の中に落ちる回を
+ * 求める（表示と通知で回の判定がずれないよう、必ず同じ関数を通すこと）。
  */
 async function notifyUpcomingEvents(now: Date): Promise<number> {
   const from = addMinutes(now, EVENT_LEAD_MIN - EVENT_WINDOW_MIN);
   const to = addMinutes(now, EVENT_LEAD_MIN);
+  const today = dateKey(now);
 
   const { data, error } = await supabase
     .from("events")
-    .select("id, title, starts_at, location, created_by")
-    .not("created_by", "is", null)
+    .select("*")
     // 終日予定に「15 分前」は意味が無いので外す
     .eq("all_day", false)
-    .gte("starts_at", from.toISOString())
-    .lte("starts_at", to.toISOString());
+    .or(
+      [
+        // 単発: 窓の中に開始があるもの
+        `and(recurrence_freq.is.null,starts_at.gte."${from.toISOString()}",starts_at.lte."${to.toISOString()}")`,
+        // 繰り返し: 1 回目が窓より前でも対象になりうる。終わった系列だけ落とす。
+        `and(recurrence_freq.not.is.null,starts_at.lte."${to.toISOString()}",recurrence_until.is.null)`,
+        `and(recurrence_freq.not.is.null,starts_at.lte."${to.toISOString()}",recurrence_until.gte."${today}")`,
+      ].join(",")
+    );
 
   if (error) {
     console.error("[cron] 予定の取得に失敗しました", { message: error.message });
     return 0;
   }
 
-  const results = await Promise.all(
-    data.map(async (event) => {
-      const owner = event.created_by as string;
-      const startsAt = new Date(event.starts_at);
+  const jobs: Promise<boolean>[] = [];
 
-      return sendPushOnce(owner, dedupeKey.eventSoon(event.id), {
-        kind: "event-soon",
-        title: "まもなく開始",
-        body: `${event.title}\n${formatTime(startsAt)}${event.location ? `・${event.location}` : ""}`,
-        url: `/calendar?view=day&date=${dateKey(startsAt)}`,
-        tag: `event-soon:${event.id}`,
-      });
-    })
-  );
+  for (const event of data) {
+    const recipients =
+      event.assignees && event.assignees.length > 0
+        ? event.assignees
+        : event.created_by
+          ? [event.created_by]
+          : [];
 
+    if (recipients.length === 0) continue;
+
+    const occurrences = expandOccurrences(
+      {
+        startsAt: event.starts_at,
+        endsAt: event.ends_at,
+        recurrence: toRecurrence(event),
+      },
+      from,
+      // expandOccurrences は半開区間なので、窓の終端ちょうどの回も拾えるよう 1 分伸ばす
+      addMinutes(to, 1)
+    );
+
+    for (const occurrence of occurrences) {
+      const startsAt = new Date(occurrence.startsAt);
+
+      // 開始が窓の中に入っている回だけが対象（長い予定が跨っているだけの回は除く）
+      if (startsAt < from || startsAt > to) continue;
+
+      for (const recipient of recipients) {
+        jobs.push(
+          sendPushOnce(recipient, dedupeKey.eventSoon(event.id, occurrence.occurrenceDate), {
+            kind: "event-soon",
+            title: "まもなく開始",
+            body: `${event.title}\n${formatTime(startsAt)}${event.location ? `・${event.location}` : ""}`,
+            url: `/calendar?view=day&date=${dateKey(startsAt)}`,
+            tag: `event-soon:${event.id}:${occurrence.occurrenceDate}`,
+          })
+        );
+      }
+    }
+  }
+
+  const results = await Promise.all(jobs);
   return results.filter(Boolean).length;
 }

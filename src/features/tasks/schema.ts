@@ -42,6 +42,8 @@ export const taskFormSchema = z
   .object({
     id: z.uuid().optional(),
     projectId: optionalUuid,
+    /** マスタ（task_types）の id。未選択は null。 */
+    taskTypeId: optionalUuid,
     title: z.string().trim().min(1, "タイトルは必須です").max(200),
     detail: optionalText(4000),
     status: z.enum(TASK_STATUSES).catch("todo"),
@@ -67,6 +69,9 @@ export type TaskItem = {
   projectId: string | null;
   projectName: string | null;
   projectColor: ProjectColor;
+  /** 種別。マスタから引いた名前で、未設定なら null。 */
+  taskTypeId: string | null;
+  taskTypeName: string | null;
   title: string;
   detail: string | null;
   status: TaskStatus;

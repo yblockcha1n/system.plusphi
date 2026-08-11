@@ -3,13 +3,24 @@
 import { useState } from "react";
 import { LoaderCircleIcon, Trash2Icon } from "lucide-react";
 import { api, upsert } from "@/lib/api-client";
-import type { EventItem } from "@/features/calendar/schema";
+import {
+  EVENT_TITLE_PRESETS,
+  stripTitlePreset,
+  type EventItem,
+} from "@/features/calendar/schema";
 import type { ProjectOption } from "@/features/projects/schema";
+import {
+  RECURRENCE_FREQS,
+  RECURRENCE_LABELS,
+  describeRecurrence,
+} from "@/features/calendar/recurrence";
+import type { UserOption } from "@/lib/env";
 import { NONE_VALUE } from "@/lib/form";
 import { addDays, toDateInput, toDateTimeInput } from "@/lib/datetime";
 import { DateTimeField } from "@/components/shared/date-time-field";
 import { Field } from "@/components/shared/field";
 import { SelectField, type SelectOption } from "@/components/shared/select-field";
+import { UserChecklist } from "@/components/shared/user-checklist";
 import { useApiForm } from "@/components/shared/use-api";
 import { useFormResetKey } from "@/components/shared/use-form-reset-key";
 import { Button } from "@/components/ui/button";
@@ -17,6 +28,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Sheet,
   SheetClose,
@@ -41,7 +58,12 @@ type EventSheetProps = {
   event?: EventItem;
   draft?: EventDraft;
   projects: ProjectOption[];
-  onDelete?: (event: EventItem) => void;
+  users: UserOption[];
+  /**
+   * 削除の要求。繰り返しの予定は「この回だけ」と「すべての回」で意味が違うので、
+   * どちらを押されたかを呼び出し側へ伝える（実際の確認と実行は呼び出し側）。
+   */
+  onDelete?: (event: EventItem, scope: "occurrence" | "series") => void;
 };
 
 export function EventSheet({
@@ -50,6 +72,7 @@ export function EventSheet({
   event,
   draft,
   projects,
+  users,
   onDelete,
 }: EventSheetProps) {
   const { state, pending, onSubmit } = useApiForm(
@@ -60,15 +83,35 @@ export function EventSheet({
 
   const initialAllDay = event?.allDay ?? draft?.allDay ?? false;
   const initialProject = event?.projectId ?? NONE_VALUE;
+  const initialFreq = event?.recurrence?.freq ?? NONE_VALUE;
+  const initialTitle = event?.title ?? "";
 
   const [allDay, setAllDay] = useState(initialAllDay);
   const [projectId, setProjectId] = useState<string>(initialProject);
+  const [freq, setFreq] = useState<string>(initialFreq);
+  // 種別ボタンから書き換えるため、タイトルだけは制御された入力にする
+  const [title, setTitle] = useState(initialTitle);
 
   // 開き直したときに前回の入力・選択が残らないようにする
   const formKey = useFormResetKey(open, () => {
     setAllDay(initialAllDay);
     setProjectId(initialProject);
+    setFreq(initialFreq);
+    setTitle(initialTitle);
   });
+
+  /**
+   * 種別を付け外しする。同じものを押したら外し、違うものを押したら差し替える。
+   * 積み重ならないよう、先頭に付いている種別は常に取り除いてから付ける。
+   */
+  const togglePreset = (preset: string) => {
+    setTitle((current) =>
+      (current.startsWith(preset)
+        ? stripTitlePreset(current)
+        : `${preset}${stripTitlePreset(current)}`
+      ).slice(0, 200)
+    );
+  };
 
   const startSource = event?.startsAt ?? draft?.startsAt ?? null;
   const endSource = event?.endsAt ?? draft?.endsAt ?? null;
@@ -83,13 +126,22 @@ export function EventSheet({
     ...projects.map((project) => ({ value: project.id, label: project.name })),
   ];
 
+  const freqOptions: SelectOption[] = [
+    { value: NONE_VALUE, label: "繰り返さない" },
+    ...RECURRENCE_FREQS.map((value) => ({ value, label: RECURRENCE_LABELS[value] })),
+  ];
+
+  const repeats = freq !== NONE_VALUE;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex flex-col gap-0">
         <SheetHeader className="border-b">
           <SheetTitle>{isEdit ? "予定を編集" : "予定を登録"}</SheetTitle>
           <SheetDescription>
-            日時は日本時間で保存されます。プロジェクトを選ぶとカレンダー上で色分けされます。
+            {event?.recurrence
+              ? `${describeRecurrence(event.recurrence)}の繰り返しです。ここでの変更はすべての回に反映されます。`
+              : "日時は日本時間で保存されます。プロジェクトを選ぶとカレンダー上で色分けされます。"}
           </SheetDescription>
         </SheetHeader>
 
@@ -103,9 +155,30 @@ export function EventSheet({
                 name="title"
                 required
                 maxLength={200}
-                defaultValue={event?.title ?? ""}
+                value={title}
+                onChange={(changeEvent) => setTitle(changeEvent.target.value)}
                 placeholder="定例ミーティング"
               />
+
+              {/* よく使う種別。押すとタイトルの頭に差し込む。 */}
+              <div className="flex flex-wrap gap-1.5">
+                {EVENT_TITLE_PRESETS.map((preset) => {
+                  const active = title.startsWith(preset);
+
+                  return (
+                    <Button
+                      key={preset}
+                      type="button"
+                      variant={active ? "default" : "outline"}
+                      size="xs"
+                      aria-pressed={active}
+                      onClick={() => togglePreset(preset)}
+                    >
+                      {preset}
+                    </Button>
+                  );
+                })}
+              </div>
             </Field>
 
             <div className="flex items-center gap-2">
@@ -145,6 +218,69 @@ export function EventSheet({
               />
             </div>
 
+            {/* 繰り返しの設定。定例のように毎週・隔週で回るものを 1 行で表す。 */}
+            <div className="grid gap-5 @md:grid-cols-2">
+              <SelectField
+                label="繰り返し"
+                id="event-recurrenceFreq"
+                name="recurrenceFreq"
+                value={freq}
+                onValueChange={setFreq}
+                options={freqOptions}
+                errors={state.fieldErrors?.recurrenceFreq}
+                hint={
+                  isEdit && event?.recurrence
+                    ? "変更するとすべての回に反映されます。"
+                    : undefined
+                }
+              />
+
+              {repeats && (
+                <Field
+                  label="間隔"
+                  htmlFor="event-recurrenceInterval"
+                  errors={state.fieldErrors?.recurrenceInterval}
+                  hint={
+                    freq === "weekly"
+                      ? "2 にすると隔週になります。"
+                      : "1 なら毎回、2 なら 1 回おきです。"
+                  }
+                >
+                  <Input
+                    id="event-recurrenceInterval"
+                    name="recurrenceInterval"
+                    type="number"
+                    min={1}
+                    max={52}
+                    defaultValue={event?.recurrence?.interval ?? 1}
+                    className="w-24"
+                  />
+                </Field>
+              )}
+            </div>
+
+            {repeats && (
+              <DateTimeField
+                label="繰り返しの終了日"
+                id="recurrenceUntil"
+                name="recurrenceUntil"
+                mode="date"
+                defaultValue={event?.recurrence?.until ?? ""}
+                errors={state.fieldErrors?.recurrenceUntil}
+                hint="空のままなら終わりなく繰り返します。"
+              />
+            )}
+
+            <UserChecklist
+              label="担当者"
+              id="event-assignees"
+              name="assignees"
+              users={users}
+              defaultValue={event?.assignees ?? []}
+              errors={state.fieldErrors?.assignees}
+              hint="複数選べます。カレンダーを担当者で色分けすると、先頭の人の色になります。"
+            />
+
             <SelectField
               label="プロジェクト"
               id="event-projectId"
@@ -178,17 +314,38 @@ export function EventSheet({
           </div>
 
           <SheetFooter className="flex-row items-center gap-2 border-t">
-            {isEdit && onDelete && (
-              <Button
-                type="button"
-                variant="destructive"
-                disabled={pending}
-                onClick={() => onDelete(event as EventItem)}
-              >
-                <Trash2Icon />
-                削除
-              </Button>
-            )}
+            {isEdit &&
+              onDelete &&
+              (event?.recurrence ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button type="button" variant="destructive" disabled={pending}>
+                        <Trash2Icon />
+                        削除
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent align="start" className="w-auto min-w-44">
+                    <DropdownMenuItem onClick={() => onDelete(event, "occurrence")}>
+                      この回だけ削除
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onDelete(event, "series")}>
+                      すべての回を削除
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={pending}
+                  onClick={() => onDelete(event as EventItem, "series")}
+                >
+                  <Trash2Icon />
+                  削除
+                </Button>
+              ))}
 
             <div className="ml-auto flex gap-2">
               <SheetClose

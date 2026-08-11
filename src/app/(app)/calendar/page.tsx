@@ -8,9 +8,11 @@ import {
   startOfDay,
   startOfWeek,
 } from "@/lib/datetime";
+import { getHolidayMap } from "@/lib/holidays";
 import { getCalendarData } from "@/features/calendar/queries";
 import { getProjectOptions } from "@/features/projects/queries";
 import { getTasks } from "@/features/tasks/queries";
+import { getTaskTypeOptions } from "@/features/task-types/queries";
 import {
   toCalendarColorMode,
   toCalendarView,
@@ -50,10 +52,11 @@ export default async function CalendarPage(props: PageProps<"/calendar">) {
   const anchor = parseDateKey(first(searchParams.date)) ?? today;
   const { start, end } = rangeFor(view, anchor);
 
-  const [calendar, tasks, projects] = await Promise.all([
+  const [calendar, tasks, projects, taskTypes] = await Promise.all([
     getCalendarData(start, end, colorMode),
     getTasks(),
     getProjectOptions(),
+    getTaskTypeOptions(),
   ]);
 
   return (
@@ -67,7 +70,11 @@ export default async function CalendarPage(props: PageProps<"/calendar">) {
         events={calendar.events}
         tasks={tasks}
         projects={projects}
+        taskTypes={taskTypes}
         users={listUsers()}
+        // 祝日は決まりきった計算なのでサーバーで求めて渡す
+        // （クライアントにライブラリを積む必要がない）
+        holidays={getHolidayMap(start, end)}
       />
     </div>
   );

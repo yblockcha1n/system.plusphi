@@ -4,6 +4,7 @@ import { AlarmClockIcon, CalendarDaysIcon, ClipboardCheckIcon, ListChecksIcon } 
 import { listUsers } from "@/lib/env";
 import { getHomeData } from "@/features/home/queries";
 import { getProjectOptions } from "@/features/projects/queries";
+import { getTaskTypeOptions } from "@/features/task-types/queries";
 import { PROJECT_COLORS } from "@/features/projects/schema";
 import { formatFullDate, formatRange } from "@/lib/datetime";
 import { EmptyState, PageHeader, Panel, PanelHeader } from "@/components/shared/page-header";
@@ -17,7 +18,11 @@ export const metadata: Metadata = {
 };
 
 export default async function HomePage() {
-  const [home, projects] = await Promise.all([getHomeData(), getProjectOptions()]);
+  const [home, projects, taskTypes] = await Promise.all([
+    getHomeData(),
+    getProjectOptions(),
+    getTaskTypeOptions(),
+  ]);
   const users = listUsers();
   const today = new Date(home.today);
 
@@ -26,7 +31,7 @@ export default async function HomePage() {
       <PageHeader
         title={`${home.viewer.name} さんのページ`}
         description={`${formatFullDate(today)} の状況です。`}
-        actions={<TaskToolbar projects={projects} users={users} />}
+        actions={<TaskToolbar projects={projects} taskTypes={taskTypes} users={users} />}
       />
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -110,6 +115,7 @@ export default async function HomePage() {
           <TaskList
             tasks={home.myTasks.slice(0, 8)}
             projects={projects}
+            taskTypes={taskTypes}
             users={users}
             emptyMessage="担当しているタスクはありません。"
           />
@@ -121,7 +127,12 @@ export default async function HomePage() {
               <ClipboardCheckIcon className="size-4 shrink-0 text-muted-foreground" />
               <h3 className="font-heading text-sm font-semibold">自分が検収するタスク</h3>
             </PanelHeader>
-            <TaskList tasks={home.awaitingReview} projects={projects} users={users} />
+            <TaskList
+              tasks={home.awaitingReview}
+              projects={projects}
+              taskTypes={taskTypes}
+              users={users}
+            />
           </Panel>
         )}
 
@@ -131,7 +142,12 @@ export default async function HomePage() {
               <AlarmClockIcon className="size-4 shrink-0 text-destructive" />
               <h3 className="font-heading text-sm font-semibold text-destructive">締切超過</h3>
             </PanelHeader>
-            <TaskList tasks={home.overdue} projects={projects} users={users} />
+            <TaskList
+              tasks={home.overdue}
+              projects={projects}
+              taskTypes={taskTypes}
+              users={users}
+            />
           </Panel>
         )}
       </div>

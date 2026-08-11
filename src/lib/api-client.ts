@@ -63,6 +63,14 @@ export const api = {
   setProjectArchived: (id: string, archived: boolean) =>
     request(`/api/projects/${id}/archive`, "POST", { archived }),
 
+  createTaskType: (values: Values) => request("/api/task-types", "POST", values),
+  updateTaskType: (id: string, values: Values) =>
+    request(`/api/task-types/${id}`, "PATCH", values),
+  deleteTaskType: (id: string) => request(`/api/task-types/${id}`, "DELETE"),
+  reorderTaskTypes: (ids: string[]) => request("/api/task-types/reorder", "POST", { ids }),
+  setTaskTypeArchived: (id: string, archived: boolean) =>
+    request(`/api/task-types/${id}/archive`, "POST", { archived }),
+
   createTask: (values: Values) => request("/api/tasks", "POST", values),
   updateTask: (id: string, values: Values) => request(`/api/tasks/${id}`, "PATCH", values),
   deleteTask: (id: string) => request(`/api/tasks/${id}`, "DELETE"),
@@ -79,6 +87,9 @@ export const api = {
   createEvent: (values: Values) => request("/api/events", "POST", values),
   updateEvent: (id: string, values: Values) => request(`/api/events/${id}`, "PATCH", values),
   deleteEvent: (id: string) => request(`/api/events/${id}`, "DELETE"),
+  /** 繰り返しの予定から「この回だけ」を除外する。 */
+  skipEventOccurrence: (id: string, occurrenceDate: string) =>
+    request(`/api/events/${id}/skip`, "POST", { occurrenceDate }),
 };
 
 /**
