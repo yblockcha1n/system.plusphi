@@ -4,5 +4,7 @@ import { updateTaskStatus } from "@/features/tasks/service";
 
 export async function POST(request: NextRequest, ctx: RouteContext<"/api/tasks/[id]/status">) {
   const { id } = await ctx.params;
-  return withSession(request, async () => updateTaskStatus(id, await readJson(request)));
+  return withSession(request, async (session) =>
+    updateTaskStatus(session, id, await readJson(request))
+  );
 }

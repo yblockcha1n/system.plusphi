@@ -80,6 +80,30 @@ export type CredentialAccessLogRow = {
   created_at: string;
 };
 
+/** Web Push の購読。1 行 = 利用者 × 端末。0005 のマイグレーションで追加。 */
+export type PushSubscriptionRow = {
+  id: string;
+  /** 購読した利用者のメールアドレス。 */
+  actor: string;
+  /** ブラウザが払い出す一意な宛先。 */
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  user_agent: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** 定期通知の二重送信を防ぐための記録。0005 のマイグレーションで追加。 */
+export type NotificationDeliveryRow = {
+  id: string;
+  kind: string;
+  /** 宛先の利用者のメールアドレス。 */
+  actor: string;
+  dedupe_key: string;
+  created_at: string;
+};
+
 /** DB 側にデフォルト値があるため、Insert では必須列以外を省略できる。 */
 type Insertable<Row, Required extends keyof Row> = Pick<Row, Required> &
   Partial<Omit<Row, Required>>;
@@ -155,6 +179,18 @@ export type Database = {
           },
         ];
       };
+      push_subscriptions: {
+        Row: PushSubscriptionRow;
+        Insert: Insertable<PushSubscriptionRow, "actor" | "endpoint" | "p256dh" | "auth">;
+        Update: Partial<PushSubscriptionRow>;
+        Relationships: [];
+      };
+      notification_deliveries: {
+        Row: NotificationDeliveryRow;
+        Insert: Insertable<NotificationDeliveryRow, "kind" | "actor" | "dedupe_key">;
+        Update: Partial<NotificationDeliveryRow>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -172,6 +208,11 @@ export type Database = {
           done: number;
           overdue: number;
         }[];
+      };
+      /** 30 日より古い送信記録を捨てる。Supabase Cron から 1 日 1 回呼ぶ。 */
+      purge_notification_deliveries: {
+        Args: Record<string, never>;
+        Returns: undefined;
       };
     };
     Enums: Record<string, never>;

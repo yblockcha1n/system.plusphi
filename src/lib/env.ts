@@ -68,6 +68,15 @@ const adminUsers = z
     return users;
   });
 
+/**
+ * Push 通知まわりは「任意」にしてある。
+ *
+ * 必須にすると、鍵を設定する前にデプロイした瞬間にアプリ全体が起動しなくなる。
+ * 通知が使えないのと基幹システムが落ちるのとでは影響がまるで違うので、
+ * 未設定なら通知機能だけを黙って無効にする（isPushConfigured で判定）。
+ */
+const optionalSecret = z.string().min(1).optional();
+
 const envSchema = z.object({
   ADMIN_USERS: adminUsers,
   SESSION_SECRET: z.string().min(32, "32文字以上にしてください（openssl rand -base64 32）"),
@@ -76,6 +85,14 @@ const envSchema = z.object({
     .refine((value) => base64Bytes(value) === 32, "base64 で 32 バイトの鍵を指定してください（openssl rand -base64 32）"),
   SUPABASE_URL: z.url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+
+  // npm run generate-vapid で作る
+  VAPID_PUBLIC_KEY: optionalSecret,
+  VAPID_PRIVATE_KEY: optionalSecret,
+  /** 送信元の連絡先。push サービスが配信を止めたいときに使う。 */
+  VAPID_SUBJECT: z.string().min(1).default("mailto:admin@plusphi.jp"),
+  /** Supabase Cron から /api/cron/* を叩くときの合言葉。 */
+  CRON_SECRET: optionalSecret,
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -88,6 +105,11 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
+
+/** VAPID 鍵が揃っているか。揃っていなければ通知の購読も送信も行わない。 */
+export function isPushConfigured(): boolean {
+  return Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY);
+}
 
 export function findAdminUser(email: string): AdminUser | undefined {
   const normalized = email.trim().toLowerCase();

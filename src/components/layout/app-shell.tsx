@@ -14,6 +14,7 @@ import {
   writeSidebarCookie,
 } from "@/components/layout/sidebar-cookie";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { NotificationToggle } from "@/components/pwa/notification-toggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,11 @@ type AppShellProps = {
   defaultClosedGroups: string[];
   name: string;
   email: string;
+  /**
+   * Web Push の VAPID 公開鍵。未設定なら null で、通知ボタンは出さない。
+   * 公開鍵なのでクライアントへ渡してよい（秘密鍵はサーバーに置いたまま）。
+   */
+  vapidPublicKey: string | null;
   children: React.ReactNode;
 };
 
@@ -31,6 +37,7 @@ export function AppShell({
   defaultClosedGroups,
   name,
   email,
+  vapidPublicKey,
   children,
 }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
@@ -174,6 +181,7 @@ export function AppShell({
           </h1>
 
           <div className="ml-auto flex items-center gap-1">
+            <NotificationToggle vapidPublicKey={vapidPublicKey} />
             <ThemeToggle />
           </div>
 

@@ -70,6 +70,12 @@ export const api = {
   updateTaskStatus: (id: string, status: string) =>
     request(`/api/tasks/${id}/status`, "POST", { status }),
 
+  subscribePush: (subscription: unknown) =>
+    request("/api/push/subscribe", "POST", { subscription }),
+  unsubscribePush: (endpoint: string) =>
+    request("/api/push/subscribe", "DELETE", { endpoint }),
+  sendTestPush: () => request("/api/push/test", "POST"),
+
   createEvent: (values: Values) => request("/api/events", "POST", values),
   updateEvent: (id: string, values: Values) => request(`/api/events/${id}`, "PATCH", values),
   deleteEvent: (id: string) => request(`/api/events/${id}`, "DELETE"),
