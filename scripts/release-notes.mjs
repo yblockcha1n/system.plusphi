@@ -89,10 +89,85 @@ async function callApp(path, init = {}) {
   const text = await response.text();
 
   if (!response.ok) {
-    throw new Error(`アプリへの ${path} が失敗しました (HTTP ${response.status}): ${text}`);
+    // 本文が HTML（＝ Next.js のエラーページ）だと数万文字になる。
+    // ログを埋めても読めないので頭だけ出す。
+    const detail = text.trimStart().startsWith("<")
+      ? `${text.slice(0, 200)}…（HTML が返っています）`
+      : text;
+
+    throw new Error(`アプリへの ${path} が失敗しました (HTTP ${response.status}): ${detail}`);
   }
 
   return text ? JSON.parse(text) : null;
+}
+
+/** 待ち時間。デプロイ完了までの猶予。 */
+const DEPLOY_WAIT_MS = 6 * 60 * 1000;
+const RETRY_INTERVAL_MS = 15 * 1000;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * アプリに新しいコードが乗るまで待つ。
+ *
+ * この workflow は push と同時に走るが、Vercel のデプロイが終わるのは
+ * その 1〜2 分後。先に叩くと、まだ古いデプロイに当たって
+ * /api/release-notes が 404（Next.js のエラーページ）を返す。
+ *
+ * 404 は「まだ来ていない」とみなして待ち、401 は合言葉の不一致なので
+ * 待っても直らない＝即座に諦める。
+ */
+async function waitForApp() {
+  const deadline = Date.now() + DEPLOY_WAIT_MS;
+  let attempt = 0;
+
+  for (;;) {
+    attempt += 1;
+
+    let response;
+
+    try {
+      response = await fetch(`${APP_URL}/api/release-notes`, {
+        headers: { Authorization: `Bearer ${SECRET}` },
+      });
+    } catch (cause) {
+      // 名前解決の失敗など。素の "fetch failed" だけだと原因が分からない。
+      throw new Error(
+        `${APP_URL} へ接続できませんでした（${cause.message}）。` +
+          "GitHub Secrets の APP_URL が正しいか確認してください。"
+      );
+    }
+
+    if (response.ok) {
+      const { baseSha } = await response.json();
+      if (attempt > 1) console.log(`デプロイの反映を確認しました（${attempt} 回目）。`);
+      return baseSha ?? null;
+    }
+
+    if (response.status === 401) {
+      throw new Error(
+        "アプリに拒否されました (401)。GitHub の RELEASE_NOTES_SECRET と " +
+          "Vercel の環境変数が一致しているか、環境変数の設定後に再デプロイしたかを確認してください。"
+      );
+    }
+
+    if (response.status !== 404 && response.status < 500) {
+      throw new Error(`アプリへの問い合わせが失敗しました (HTTP ${response.status})。`);
+    }
+
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `${Math.round(DEPLOY_WAIT_MS / 60000)} 分待ちましたが /api/release-notes が現れませんでした ` +
+          `(最後の応答: HTTP ${response.status})。デプロイが失敗しているか、` +
+          "APP_URL が正しくない可能性があります。"
+      );
+    }
+
+    console.log(
+      `まだデプロイが反映されていません (HTTP ${response.status})。${RETRY_INTERVAL_MS / 1000} 秒後に再試行します。`
+    );
+    await sleep(RETRY_INTERVAL_MS);
+  }
 }
 
 /* --------------------------- 差分を集める --------------------------- */
@@ -289,7 +364,8 @@ function versionLabel() {
 }
 
 async function main() {
-  const { baseSha } = await callApp("/api/release-notes");
+  // デプロイが終わるまで待ってから、差分の起点を受け取る
+  const baseSha = await waitForApp();
   const collected = collect(baseSha);
 
   if (collected.commits.length === 0 && collected.diff === "") {

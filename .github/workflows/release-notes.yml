@@ -29,8 +29,13 @@ jobs:
         with:
           node-version: 22
 
-      # スクリプトは Node の標準機能だけで書いてあるので npm install は不要
+      # スクリプトは Node の標準機能だけで書いてあるので npm install は不要。
+      #
+      # この job は push と同時に走るため、開始時点では Vercel のデプロイが
+      # まだ終わっていない。スクリプト側で /api/release-notes が現れるまで
+      # 最大 6 分待つようにしてある（古いデプロイを叩くと 404 になるため）。
       - name: 下書きを生成して登録
+        timeout-minutes: 12
         env:
           APP_URL: ${{ secrets.APP_URL }}
           RELEASE_NOTES_SECRET: ${{ secrets.RELEASE_NOTES_SECRET }}
