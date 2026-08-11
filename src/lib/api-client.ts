@@ -63,6 +63,11 @@ export const api = {
   setProjectArchived: (id: string, archived: boolean) =>
     request(`/api/projects/${id}/archive`, "POST", { archived }),
 
+  updateReleaseNote: (id: string, values: Values) =>
+    request(`/api/release-notes/${id}`, "PATCH", values),
+  publishReleaseNote: (id: string) => request(`/api/release-notes/${id}/publish`, "POST"),
+  deleteReleaseNote: (id: string) => request(`/api/release-notes/${id}`, "DELETE"),
+
   createInspiration: (values: Values) => request("/api/inspirations", "POST", values),
   updateInspiration: (id: string, values: Values) =>
     request(`/api/inspirations/${id}`, "PATCH", values),

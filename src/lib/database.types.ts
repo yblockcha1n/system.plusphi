@@ -167,6 +167,25 @@ export type InspirationTagLinkRow = {
   created_at: string;
 };
 
+/** パッチノート。0009 のマイグレーションで追加。 */
+export type ReleaseNoteRow = {
+  id: string;
+  version: string;
+  title: string;
+  body: string;
+  status: "draft" | "published";
+  published_at: string | null;
+  /** 前回公開時の HEAD。次の下書きはここを起点に差分を取る。 */
+  base_sha: string | null;
+  head_sha: string | null;
+  commit_count: number;
+  generated_by: string | null;
+  /** 公開した利用者のメールアドレス。下書きの時点では null。 */
+  publisher: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 /** DB 側にデフォルト値があるため、Insert では必須列以外を省略できる。 */
 type Insertable<Row, Required extends keyof Row> = Pick<Row, Required> &
   Partial<Omit<Row, Required>>;
@@ -277,6 +296,12 @@ export type Database = {
         Row: InspirationRow;
         Insert: Insertable<InspirationRow, "url">;
         Update: Partial<InspirationRow>;
+        Relationships: [];
+      };
+      release_notes: {
+        Row: ReleaseNoteRow;
+        Insert: Insertable<ReleaseNoteRow, "version" | "title" | "body">;
+        Update: Partial<ReleaseNoteRow>;
         Relationships: [];
       };
       inspiration_tag_links: {

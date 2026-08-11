@@ -1,0 +1,39 @@
+# prd への push ごとに、変更内容からパッチノートの「下書き」を作る。
+#
+# 公開と通知は行わない。作業途中の push で全員のスマートフォンが鳴らないよう、
+# 公開は必ずアプリの画面から人が行う設計にしてある。
+name: パッチノートの下書きを作成
+
+on:
+  push:
+    branches: [prd]
+  # 手で作り直したいときのために、画面からも実行できるようにしておく
+  workflow_dispatch:
+
+# 同時に走ると下書きの取り合いになるので、後から来たものだけを走らせる
+concurrency:
+  group: release-notes
+  cancel-in-progress: true
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 差分を取るため、履歴をすべて取得する（既定の浅い取得だと
+          # 前回公開時のコミットに辿り着けない）
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # スクリプトは Node の標準機能だけで書いてあるので npm install は不要
+      - name: 下書きを生成して登録
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          RELEASE_NOTES_SECRET: ${{ secrets.RELEASE_NOTES_SECRET }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          PERPLEXITY_MODEL: ${{ vars.PERPLEXITY_MODEL }}
+        run: node scripts/release-notes.mjs

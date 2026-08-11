@@ -6,6 +6,7 @@ import { z } from "zod";
  *  - task-review   : 自分が検収者のタスクが「検収待ち」になった
  *  - deadline      : 締切のリマインド（定期実行）
  *  - event-soon    : 予定の開始前（定期実行）
+ *  - release-note  : パッチノートの公開
  *  - test          : 動作確認用
  */
 export const NOTIFICATION_KINDS = [
@@ -13,6 +14,7 @@ export const NOTIFICATION_KINDS = [
   "task-review",
   "deadline",
   "event-soon",
+  "release-note",
   "test",
 ] as const;
 

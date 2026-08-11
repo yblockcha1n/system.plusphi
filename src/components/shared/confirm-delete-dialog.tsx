@@ -19,6 +19,13 @@ type ConfirmDeleteDialogProps = {
   onOpenChange: (open: boolean) => void;
   title: string;
   description: string;
+  /**
+   * 実行ボタンの文言と見た目。既定は削除。
+   * 「公開」のように取り消せないが破壊的ではない操作にも使いたいので、
+   * 赤い見た目を外せるようにしてある。
+   */
+  confirmLabel?: string;
+  confirmVariant?: "destructive" | "default";
   onConfirm: () => Promise<ApiResult>;
 };
 
@@ -27,6 +34,8 @@ export function ConfirmDeleteDialog({
   onOpenChange,
   title,
   description,
+  confirmLabel = "削除する",
+  confirmVariant = "destructive",
   onConfirm,
 }: ConfirmDeleteDialogProps) {
   const { run, pending } = useApiMutation();
@@ -49,9 +58,14 @@ export function ConfirmDeleteDialog({
               </Button>
             }
           />
-          <Button type="button" variant="destructive" onClick={handleConfirm} disabled={pending}>
+          <Button
+            type="button"
+            variant={confirmVariant}
+            onClick={handleConfirm}
+            disabled={pending}
+          >
             {pending && <LoaderCircleIcon className="animate-spin" />}
-            削除する
+            {confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -93,6 +93,8 @@ const envSchema = z.object({
   VAPID_SUBJECT: z.string().min(1).default("mailto:admin@plusphi.jp"),
   /** Supabase Cron から /api/cron/* を叩くときの合言葉。 */
   CRON_SECRET: optionalSecret,
+  /** GitHub Actions からパッチノートの下書きを投げるときの合言葉。 */
+  RELEASE_NOTES_SECRET: optionalSecret,
 });
 
 const parsed = envSchema.safeParse(process.env);

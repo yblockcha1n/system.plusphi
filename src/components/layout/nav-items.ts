@@ -4,6 +4,7 @@ import {
   HouseIcon,
   KeyRoundIcon,
   LightbulbIcon,
+  MegaphoneIcon,
   ListChecksIcon,
   TagsIcon,
   type LucideIcon,
@@ -52,6 +53,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { href: "/inspirations", label: "ナレッジ", icon: LightbulbIcon },
       { href: "/credentials", label: "クレデンシャル", icon: KeyRoundIcon },
+      { href: "/release-notes", label: "パッチノート", icon: MegaphoneIcon },
     ],
   },
   {
