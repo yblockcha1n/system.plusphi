@@ -3,7 +3,12 @@ import { supabase } from "@/lib/supabase";
 import { orderedIds, type ActionState } from "@/lib/form";
 
 /** sort_order を持つテーブル。DB 関数側のホワイトリストと揃えること。 */
-type ReorderTable = "sections" | "projects" | "tasks" | "task_types";
+type ReorderTable =
+  | "sections"
+  | "projects"
+  | "tasks"
+  | "task_types"
+  | "inspiration_tags";
 
 /**
  * ドラッグ&ドロップ後の並び順を保存する。渡された配列の順に sort_order を振り直す。

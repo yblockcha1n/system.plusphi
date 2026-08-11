@@ -1,13 +1,13 @@
 "use client";
 
-import { Fragment, useState } from "react";
-import Link from "next/link";
+import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
-import { ChevronRightIcon, LogOutIcon, PanelLeftIcon } from "lucide-react";
+import { LogOutIcon, MenuIcon, PanelLeftIcon } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useApiMutation } from "@/components/shared/use-api";
-import { findNavItem, navGroups, navItems, type NavItem } from "@/components/layout/nav-items";
+import { findNavItem } from "@/components/layout/nav-items";
+import { SidebarNav } from "@/components/layout/sidebar-nav";
 import {
   NAV_GROUPS_COOKIE,
   SIDEBAR_COOKIE,
@@ -16,6 +16,13 @@ import {
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { NotificationToggle } from "@/components/pwa/notification-toggle";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
 type AppShellProps = {
@@ -42,9 +49,18 @@ export function AppShell({
 }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const [closedGroups, setClosedGroups] = useState(() => new Set(defaultClosedGroups));
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const { run: runLogout, pending: loggingOut } = useApiMutation();
+
+  // 画面が変わったらドロワーを閉じる。開いたままだと遷移先が隠れてしまう。
+  // （effect ではなくレンダー中に追随させる: react.dev/learn/you-might-not-need-an-effect）
+  const [lastPath, setLastPath] = useState(pathname);
+  if (pathname !== lastPath) {
+    setLastPath(pathname);
+    if (drawerOpen) setDrawerOpen(false);
+  }
 
   const toggle = () => {
     const next = !collapsed;
@@ -69,12 +85,23 @@ export function AppShell({
   const current = findNavItem(pathname);
   const isActive = (href: string) => current?.href === href;
 
+  const userInfo = (
+    <div className="border-t p-3">
+      <p className="truncate text-sm font-medium">{name}</p>
+      <p className="truncate text-xs text-muted-foreground" title={email}>
+        {email}
+      </p>
+    </div>
+  );
+
   return (
     // h-svh + overflow-hidden にすることで、スクロールを main の中に閉じ込める。
     // テーブルのヘッダー固定はこれが前提。
     // ライトは薄いグレーの下地。ダークは漆黒にしたいので muted を敷かない。
-    <div className="flex h-svh overflow-hidden bg-muted/40 dark:bg-background">
-      {/* サイドバーはデスクトップのみ。モバイルは下のボトムナビが担当する。 */}
+    // safe-bottom: ホーム画面から起動したとき、内容がホームインジケーターに
+    // 潜り込まないよう全体を持ち上げる。
+    <div className="safe-bottom flex h-svh overflow-hidden bg-muted/40 dark:bg-background">
+      {/* デスクトップの固定サイドバー。モバイルは同じ中身をドロワーで出す。 */}
       <aside
         className={cn(
           "hidden shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-in-out lg:flex",
@@ -95,73 +122,60 @@ export function AppShell({
           )}
         </div>
 
-        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
-          {navGroups.map((group) => {
-            const links = group.items.map((item) => (
-              <NavLink
-                key={item.href}
-                item={item}
-                collapsed={collapsed}
-                active={isActive(item.href)}
-              />
-            ));
+        <SidebarNav
+          collapsed={collapsed}
+          closedGroups={closedGroups}
+          onToggleGroup={toggleGroup}
+          isActive={isActive}
+        />
 
-            // 折りたたみ中は見出しを出す幅が無いので、グループを無視して並べる
-            if (collapsed || group.label === null) {
-              return <Fragment key={group.id}>{links}</Fragment>;
-            }
-
-            const isOpen = !closedGroups.has(group.id);
-            // 閉じたグループの中に現在地があると、どこに居るのか分からなくなる
-            const holdsCurrent = group.items.some((item) => isActive(item.href));
-
-            return (
-              // 見出しの上に間を空ける。ただし nav の先頭に来たときは詰める
-              // （first: は nav の直接の子であるこの div に対して効かせる）
-              <div key={group.id} className="mt-2 flex flex-col gap-0.5 first:mt-0">
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(group.id)}
-                  aria-expanded={isOpen}
-                  aria-controls={`nav-group-${group.id}`}
-                  className={cn(
-                    "flex h-7 items-center gap-1 px-2.5 text-xs font-medium transition-colors",
-                    !isOpen && holdsCurrent
-                      ? "text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <ChevronRightIcon
-                    className={cn("size-3.5 shrink-0 transition-transform", isOpen && "rotate-90")}
-                  />
-                  <span className="truncate">{group.label}</span>
-                  {!isOpen && holdsCurrent && (
-                    <span className="size-1.5 shrink-0 bg-foreground" aria-hidden />
-                  )}
-                </button>
-
-                {isOpen && (
-                  <div id={`nav-group-${group.id}`} className="flex flex-col gap-0.5">
-                    {links}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </nav>
-
-        {!collapsed && (
-          <div className="border-t p-3">
-            <p className="truncate text-sm font-medium">{name}</p>
-            <p className="truncate text-xs text-muted-foreground" title={email}>
-              {email}
-            </p>
-          </div>
-        )}
+        {!collapsed && userInfo}
       </aside>
+
+      {/* モバイルのドロワー。中身はデスクトップのサイドバーと同じ SidebarNav。 */}
+      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <SheetContent
+          side="left"
+          // 既定は画面いっぱいだが、ナビは脇から出す幅で十分。
+          // 変則的な指定に見えるが、ui/sheet.tsx と同じ条件で書かないと
+          // tailwind-merge が競合として解決できず幅が上書きされない。
+          className="w-72 gap-0 data-[side=left]:w-72 sm:data-[side=left]:w-72 sm:data-[side=left]:max-w-none sm:data-[side=left]:min-w-0"
+        >
+          <SheetHeader className="border-b">
+            <SheetTitle className="flex items-center gap-2">
+              <BrandMark className="size-8" size={18} />
+              plusphi
+            </SheetTitle>
+            <SheetDescription className="sr-only">
+              画面を切り替えるメニューです。
+            </SheetDescription>
+          </SheetHeader>
+
+          <SidebarNav
+            collapsed={false}
+            closedGroups={closedGroups}
+            onToggleGroup={toggleGroup}
+            isActive={isActive}
+          />
+
+          {userInfo}
+        </SheetContent>
+      </Sheet>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center gap-3 border-b bg-background px-3 sm:px-4">
+          {/* モバイルはドロワーを開く。デスクトップは幅の折りたたみ。 */}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setDrawerOpen(true)}
+            aria-label="メニューを開く"
+            aria-expanded={drawerOpen}
+            className="lg:hidden"
+          >
+            <MenuIcon />
+          </Button>
+
           <Button
             variant="ghost"
             size="icon-sm"
@@ -172,9 +186,6 @@ export function AppShell({
           >
             <PanelLeftIcon />
           </Button>
-
-          {/* モバイルではサイドバーのロゴが見えないのでヘッダーに出す */}
-          <BrandMark className="size-8 lg:hidden" size={18} />
 
           <h1 className="truncate font-heading text-sm font-semibold">
             {current?.label ?? "plusphi"}
@@ -199,68 +210,8 @@ export function AppShell({
         </header>
 
         <main className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">{children}</main>
-
-        {/* モバイルのボトムナビ。ホーム画面から起動したときの下端余白も確保する。
-            列数は項目数に追従させる（Tailwind のクラスは静的なので style で指定）。
-            サイドバーは lg 未満で隠れるため、ここに全項目を出さないと辿り着けない。 */}
-        <nav
-          className="safe-bottom grid shrink-0 border-t bg-background lg:hidden"
-          style={{ gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))` }}
-        >
-          {navItems.map((item) => {
-            const Icon = item.icon;
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={isActive(item.href) ? "page" : undefined}
-                className={cn(
-                  "flex flex-col items-center justify-center gap-1 border-t-2 py-2 text-[0.625rem] font-medium transition-colors",
-                  isActive(item.href)
-                    ? "border-t-foreground text-foreground"
-                    : "border-t-transparent text-muted-foreground"
-                )}
-              >
-                <Icon className="size-5" />
-                {item.shortLabel}
-              </Link>
-            );
-          })}
-        </nav>
       </div>
     </div>
-  );
-}
-
-/** サイドバーの 1 項目。折りたたみ中はアイコンだけにして名前は title で補う。 */
-function NavLink({
-  item,
-  collapsed,
-  active,
-}: {
-  item: NavItem;
-  collapsed: boolean;
-  active: boolean;
-}) {
-  const Icon = item.icon;
-
-  return (
-    <Link
-      href={item.href}
-      title={collapsed ? item.label : undefined}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "flex h-9 items-center gap-2.5 border border-transparent px-2.5 text-sm font-medium transition-colors",
-        collapsed && "justify-center px-0",
-        active
-          ? "border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground"
-          : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
-      )}
-    >
-      <Icon className="size-4 shrink-0" />
-      {!collapsed && <span className="truncate">{item.label}</span>}
-    </Link>
   );
 }
 

@@ -129,6 +129,44 @@ export type NotificationDeliveryRow = {
   created_at: string;
 };
 
+/** ナレッジベースのタグのマスタ。0008 のマイグレーションで追加。 */
+export type InspirationTagRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  sort_order: number;
+  /** null = 利用中。 */
+  archived_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** 参考にした投稿。値の一覧は features/inspirations/url.ts と揃える。0008 で追加。 */
+export type InspirationRow = {
+  id: string;
+  url: string;
+  platform: string;
+  content_kind: string;
+  /** ショートコードや動画 ID。埋め込み URL の組み立てに使う。 */
+  external_id: string | null;
+  title: string | null;
+  author_name: string | null;
+  note: string | null;
+  /** Storage 上のパス。取得できなければ null。 */
+  thumbnail_path: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** 投稿とタグの紐づけ。0008 で追加。 */
+export type InspirationTagLinkRow = {
+  inspiration_id: string;
+  tag_id: string;
+  created_at: string;
+};
+
 /** DB 側にデフォルト値があるため、Insert では必須列以外を省略できる。 */
 type Insertable<Row, Required extends keyof Row> = Pick<Row, Required> &
   Partial<Omit<Row, Required>>;
@@ -228,6 +266,39 @@ export type Database = {
         Insert: Insertable<NotificationDeliveryRow, "kind" | "actor" | "dedupe_key">;
         Update: Partial<NotificationDeliveryRow>;
         Relationships: [];
+      };
+      inspiration_tags: {
+        Row: InspirationTagRow;
+        Insert: Insertable<InspirationTagRow, "name">;
+        Update: Partial<InspirationTagRow>;
+        Relationships: [];
+      };
+      inspirations: {
+        Row: InspirationRow;
+        Insert: Insertable<InspirationRow, "url">;
+        Update: Partial<InspirationRow>;
+        Relationships: [];
+      };
+      inspiration_tag_links: {
+        Row: InspirationTagLinkRow;
+        Insert: Insertable<InspirationTagLinkRow, "inspiration_id" | "tag_id">;
+        Update: Partial<InspirationTagLinkRow>;
+        Relationships: [
+          {
+            foreignKeyName: "inspiration_tag_links_inspiration_id_fkey";
+            columns: ["inspiration_id"];
+            isOneToOne: false;
+            referencedRelation: "inspirations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "inspiration_tag_links_tag_id_fkey";
+            columns: ["tag_id"];
+            isOneToOne: false;
+            referencedRelation: "inspiration_tags";
+            referencedColumns: ["id"];
+          },
+        ];
       };
     };
     Views: Record<string, never>;

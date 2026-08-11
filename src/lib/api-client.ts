@@ -63,6 +63,22 @@ export const api = {
   setProjectArchived: (id: string, archived: boolean) =>
     request(`/api/projects/${id}/archive`, "POST", { archived }),
 
+  createInspiration: (values: Values) => request("/api/inspirations", "POST", values),
+  updateInspiration: (id: string, values: Values) =>
+    request(`/api/inspirations/${id}`, "PATCH", values),
+  deleteInspiration: (id: string) => request(`/api/inspirations/${id}`, "DELETE"),
+  /** サムネ・タイトル・投稿者を取り直す。 */
+  refreshInspiration: (id: string) => request(`/api/inspirations/${id}/refresh`, "POST"),
+
+  createInspirationTag: (values: Values) => request("/api/inspiration-tags", "POST", values),
+  updateInspirationTag: (id: string, values: Values) =>
+    request(`/api/inspiration-tags/${id}`, "PATCH", values),
+  deleteInspirationTag: (id: string) => request(`/api/inspiration-tags/${id}`, "DELETE"),
+  reorderInspirationTags: (ids: string[]) =>
+    request("/api/inspiration-tags/reorder", "POST", { ids }),
+  setInspirationTagArchived: (id: string, archived: boolean) =>
+    request(`/api/inspiration-tags/${id}/archive`, "POST", { archived }),
+
   createTaskType: (values: Values) => request("/api/task-types", "POST", values),
   updateTaskType: (id: string, values: Values) =>
     request(`/api/task-types/${id}`, "PATCH", values),
