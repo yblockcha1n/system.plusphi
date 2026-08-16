@@ -13,11 +13,13 @@ import { cn } from "@/lib/utils";
  *
  * Vercel のリクエストボディ上限は 4.5MB で変更できないため、スマートフォンの
  * 写真（3〜5MB、base64 にすると 1.33 倍）をそのまま送ると 413 になる。
- * 1600px あれば名刺の文字は十分読め、読み取りに渡す画像のトークン量
- *（幅 × 高さ ÷ 750）も 2,300 程度に収まる。
+ *
+ * 1280px にしているのは、送信量が読み取りの待ち時間に効くため。名刺の文字は
+ * 大きいので 1280px でも十分読めるうえ、1600px と比べて画素数がおよそ 6 割に
+ * 減り、読み取りに渡すトークン量（幅 × 高さ ÷ 750）も 1,400 程度で済む。
  */
-const MAX_EDGE = 1600;
-const JPEG_QUALITY = 0.82;
+const MAX_EDGE = 1280;
+const JPEG_QUALITY = 0.8;
 
 export type CaptureResult = {
   card: ScannedCard;
@@ -78,6 +80,11 @@ export function CardCapture({
     try {
       const imageDataUrl = await toResizedDataUrl(file);
       setPreview(imageDataUrl);
+
+      // 読み取りが遅いときに「どれだけ送ったか」を追えるようにしておく
+      console.info(
+        `[名刺] 元 ${Math.round(file.size / 1024)}KB → 送信 ${Math.round(imageDataUrl.length / 1024)}KB`
+      );
 
       if (!ocrEnabled) {
         // 読み取りは使えないが、画像だけは保存できるようにする

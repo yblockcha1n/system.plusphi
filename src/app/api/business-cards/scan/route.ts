@@ -1,8 +1,17 @@
 import type { NextRequest } from "next/server";
 import { ok, fail, readJson, withSession } from "@/lib/api";
+import { textField } from "@/lib/form";
 import { scanBusinessCard } from "@/features/business-cards/ocr";
 import { findCompanyCandidates } from "@/features/business-cards/queries";
-import { textField } from "@/lib/form";
+
+/**
+ * 読み取りに使える時間。
+ *
+ * Hobby でも既定は 300 秒なので通常は足りるが、この処理だけは外部の応答を
+ * 待つので明示しておく（lib/perplexity.ts 側の待ち時間より必ず長くすること。
+ * 逆にすると、こちらのメッセージではなく素っ気ない実行時間超過になる）。
+ */
+export const maxDuration = 120;
 
 /**
  * 名刺画像を読み取るだけ。保存はしない。

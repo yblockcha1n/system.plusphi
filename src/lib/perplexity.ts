@@ -18,8 +18,14 @@ import { env } from "@/lib/env";
 
 const ENDPOINT = "https://api.perplexity.ai/v1/agent";
 
-/** 画像を含むと時間が延びるので長めに取る。 */
-const TIMEOUT_MS = 60_000;
+/**
+ * 応答を待つ上限。
+ *
+ * 手元から名刺 1 枚を投げると 4〜6 秒で返るが、Vercel の関数からだと大幅に
+ * 延びることがあった。関数側の上限（Hobby でも既定 300 秒）よりは十分手前で
+ * 諦めて、利用者に「読み取れなかった」と伝えられるようにしておく。
+ */
+const TIMEOUT_MS = 100_000;
 
 export function isPerplexityConfigured(): boolean {
   return Boolean(env.PERPLEXITY_API_KEY);
@@ -61,23 +67,46 @@ export async function askAgent({
     content.push({ type: "input_image", image_url: imageUrl });
   }
 
-  const response = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.PERPLEXITY_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-    body: JSON.stringify({
-      model: model ?? env.PERPLEXITY_VISION_MODEL,
-      instructions,
-      // 画像を混ぜるときは input を配列で渡す形になる
-      input: [{ role: "user", content }],
-      max_output_tokens: maxOutputTokens,
-    }),
+  const requestBody = JSON.stringify({
+    model: model ?? env.PERPLEXITY_VISION_MODEL,
+    instructions,
+    // 画像を混ぜるときは input を配列で渡す形になる
+    input: [{ role: "user", content }],
+    max_output_tokens: maxOutputTokens,
   });
 
+  // 遅いときに「どれだけ送って何秒待ったか」が分からないと切り分けられない
+  const sizeKb = Math.round(requestBody.length / 1024);
+  const started = Date.now();
+  const elapsed = () => ((Date.now() - started) / 1000).toFixed(1);
+
+  let response: Response;
+
+  try {
+    response = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.PERPLEXITY_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      body: requestBody,
+    });
+  } catch (cause) {
+    const reason = cause instanceof Error ? cause.message : String(cause);
+    throw new Error(
+      `Perplexity への要求が終わりませんでした（送信 ${sizeKb}KB / ${elapsed()} 秒で中断: ${reason}）。`
+    );
+  }
+
   const body = await response.text();
+
+  console.info("[perplexity] 応答", {
+    model: model ?? env.PERPLEXITY_VISION_MODEL,
+    sizeKb,
+    seconds: elapsed(),
+    status: response.status,
+  });
 
   if (!response.ok) {
     throw new Error(`Perplexity への要求が失敗しました (HTTP ${response.status}): ${trim(body)}`);
