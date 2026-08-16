@@ -8,7 +8,8 @@ type ReorderTable =
   | "projects"
   | "tasks"
   | "task_types"
-  | "inspiration_tags";
+  | "inspiration_tags"
+  | "company_statuses";
 
 /**
  * ドラッグ&ドロップ後の並び順を保存する。渡された配列の順に sort_order を振り直す。

@@ -1,4 +1,5 @@
 import {
+  BuildingIcon,
   CalendarDaysIcon,
   FolderKanbanIcon,
   HouseIcon,
@@ -45,6 +46,7 @@ export const navGroups: NavGroup[] = [
       { href: "/tasks", label: "タスク", icon: ListChecksIcon },
       { href: "/calendar", label: "カレンダー", icon: CalendarDaysIcon },
       { href: "/projects", label: "プロジェクト", icon: FolderKanbanIcon },
+      { href: "/companies", label: "取引先", icon: BuildingIcon },
     ],
   },
   {
@@ -68,6 +70,11 @@ export const navGroups: NavGroup[] = [
       {
         href: "/settings/inspiration-tags",
         label: "ナレッジタグ",
+        icon: TagsIcon,
+      },
+      {
+        href: "/settings/company-statuses",
+        label: "取引先ステータス",
         icon: TagsIcon,
       },
     ],

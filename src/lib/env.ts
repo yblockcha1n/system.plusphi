@@ -95,6 +95,17 @@ const envSchema = z.object({
   CRON_SECRET: optionalSecret,
   /** GitHub Actions からパッチノートの下書きを投げるときの合言葉。 */
   RELEASE_NOTES_SECRET: optionalSecret,
+
+  /**
+   * 名刺の OCR に使う。未設定なら撮影ボタンを出さず、手入力と vCard だけで動く。
+   * GitHub Actions 側にも同名の Secret があるが、あちらは CI 専用で別物。
+   */
+  PERPLEXITY_API_KEY: optionalSecret,
+  /**
+   * 画像を読めるモデルの slug。"perplexity/" 系ではなく視覚対応のものを指定する。
+   * 正しい一覧は GET https://api.perplexity.ai/v1/models で確認できる。
+   */
+  PERPLEXITY_VISION_MODEL: z.string().min(1).default("openai/gpt-5-mini"),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -1,0 +1,143 @@
+import "server-only";
+import { env } from "@/lib/env";
+
+/**
+ * Perplexity Agent API を叩く薄い口。
+ *
+ * 判断が要る箇所（応答の取り出し方、失敗の見分け方）をここ 1 か所に閉じる。
+ * 同じ判断を scripts/release-notes.mjs も持っているが、あちらは CI で
+ * npm install なしに動かす都合で独立している（依存を持たせたくない）。
+ *
+ * 覚えておくこと:
+ *  - エンドポイントは /v1/agent。旧 /v1/sonar（chat completions）はレガシー
+ *  - web 検索は tools を渡したときだけ走る。渡さなければ検索しない
+ *  - HTTP 200 でも中で失敗していることがあるので status を必ず見る
+ *  - モデル slug は "perplexity/sonar" のように接頭辞が要る。
+ *    画像を読ませるには視覚対応のモデル（既定 openai/gpt-5-mini）を使う
+ */
+
+const ENDPOINT = "https://api.perplexity.ai/v1/agent";
+
+/** 画像を含むと時間が延びるので長めに取る。 */
+const TIMEOUT_MS = 60_000;
+
+export function isPerplexityConfigured(): boolean {
+  return Boolean(env.PERPLEXITY_API_KEY);
+}
+
+type ImagePart = { type: "input_image"; image_url: string };
+type TextPart = { type: "input_text"; text: string };
+
+export type AgentRequest = {
+  /** 省略時は視覚対応の既定モデル。 */
+  model?: string;
+  instructions: string;
+  text: string;
+  /** データ URI か https の画像 URL。 */
+  imageUrls?: string[];
+  maxOutputTokens?: number;
+};
+
+/**
+ * 問い合わせて本文の文字列を返す。
+ *
+ * 失敗は例外で伝える。呼び出し側（OCR）はそれを握って「読めなかった」として
+ * 扱うが、原因を追えるよう応答本文をそのままメッセージに含める。
+ */
+export async function askAgent({
+  model,
+  instructions,
+  text,
+  imageUrls = [],
+  maxOutputTokens = 1200,
+}: AgentRequest): Promise<string> {
+  if (!env.PERPLEXITY_API_KEY) {
+    throw new Error("PERPLEXITY_API_KEY が設定されていません。");
+  }
+
+  const content: (TextPart | ImagePart)[] = [{ type: "input_text", text }];
+
+  for (const imageUrl of imageUrls) {
+    content.push({ type: "input_image", image_url: imageUrl });
+  }
+
+  const response = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.PERPLEXITY_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+    body: JSON.stringify({
+      model: model ?? env.PERPLEXITY_VISION_MODEL,
+      instructions,
+      // 画像を混ぜるときは input を配列で渡す形になる
+      input: [{ role: "user", content }],
+      max_output_tokens: maxOutputTokens,
+    }),
+  });
+
+  const body = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`Perplexity への要求が失敗しました (HTTP ${response.status}): ${trim(body)}`);
+  }
+
+  const payload = JSON.parse(body) as {
+    status?: string;
+    output_text?: unknown;
+    output?: { content?: { text?: unknown }[] }[];
+  };
+
+  if (payload.status && payload.status !== "completed") {
+    throw new Error(`Perplexity の応答が未完了です (status=${payload.status}): ${trim(body)}`);
+  }
+
+  return readOutputText(payload, body);
+}
+
+/** 応答本文を取り出す。output_text が無ければ output[] を辿る。 */
+function readOutputText(
+  payload: { output_text?: unknown; output?: { content?: { text?: unknown }[] }[] },
+  raw: string
+): string {
+  if (typeof payload.output_text === "string" && payload.output_text.trim() !== "") {
+    return payload.output_text;
+  }
+
+  const chunks: string[] = [];
+
+  for (const item of payload.output ?? []) {
+    for (const part of item.content ?? []) {
+      if (typeof part.text === "string") chunks.push(part.text);
+    }
+  }
+
+  if (chunks.length === 0) {
+    throw new Error(`Perplexity の応答から本文を取り出せませんでした: ${trim(raw)}`);
+  }
+
+  return chunks.join("\n");
+}
+
+/**
+ * 応答から JSON を取り出す。前後に説明を付けてくることがあるので、
+ * 最初の { から最後の } までを拾う。読めなければ null。
+ */
+export function extractJson<T>(raw: string): T | null {
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+
+  if (start === -1 || end <= start) return null;
+
+  try {
+    return JSON.parse(raw.slice(start, end + 1)) as T;
+  } catch {
+    return null;
+  }
+}
+
+/** エラーメッセージにそのまま載せると長すぎるので頭だけにする。 */
+function trim(value: string): string {
+  return value.length > 400 ? `${value.slice(0, 400)}…` : value;
+}

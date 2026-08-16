@@ -186,6 +186,60 @@ export type ReleaseNoteRow = {
   updated_at: string;
 };
 
+/** 取引先のステータスのマスタ。0010 のマイグレーションで追加。 */
+export type CompanyStatusRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  sort_order: number;
+  /** null = 利用中。 */
+  archived_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** 取引先。ステータスはここに 1 つだけ付く。0010 で追加。 */
+export type CompanyRow = {
+  id: string;
+  name: string;
+  name_kana: string | null;
+  status_id: string | null;
+  website: string | null;
+  address: string | null;
+  phone: string | null;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** 名刺（＝担当者）。0010 で追加。 */
+export type BusinessCardRow = {
+  id: string;
+  /** null = 会社未設定。 */
+  company_id: string | null;
+  full_name: string;
+  full_name_kana: string | null;
+  department: string | null;
+  title: string | null;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+  /** 電子名刺のプロフィール URL。 */
+  digital_card_url: string | null;
+  /** 入手経路。値は features/business-cards/schema.ts と揃える。 */
+  source: string;
+  /** Storage 上のパス。撮影したときだけ入る。 */
+  image_path: string | null;
+  /** 名刺交換日。"YYYY-MM-DD"。 */
+  received_at: string | null;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 /** DB 側にデフォルト値があるため、Insert では必須列以外を省略できる。 */
 type Insertable<Row, Required extends keyof Row> = Pick<Row, Required> &
   Partial<Omit<Row, Required>>;
@@ -297,6 +351,40 @@ export type Database = {
         Insert: Insertable<InspirationRow, "url">;
         Update: Partial<InspirationRow>;
         Relationships: [];
+      };
+      company_statuses: {
+        Row: CompanyStatusRow;
+        Insert: Insertable<CompanyStatusRow, "name">;
+        Update: Partial<CompanyStatusRow>;
+        Relationships: [];
+      };
+      companies: {
+        Row: CompanyRow;
+        Insert: Insertable<CompanyRow, "name">;
+        Update: Partial<CompanyRow>;
+        Relationships: [
+          {
+            foreignKeyName: "companies_status_id_fkey";
+            columns: ["status_id"];
+            isOneToOne: false;
+            referencedRelation: "company_statuses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      business_cards: {
+        Row: BusinessCardRow;
+        Insert: Insertable<BusinessCardRow, "full_name">;
+        Update: Partial<BusinessCardRow>;
+        Relationships: [
+          {
+            foreignKeyName: "business_cards_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       release_notes: {
         Row: ReleaseNoteRow;

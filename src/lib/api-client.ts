@@ -56,6 +56,34 @@ export const api = {
   revealSecret: (id: string, field: "password" | "notes") =>
     request<{ value: string }>(`/api/credentials/${id}/reveal`, "POST", { field }),
 
+  createCompany: (values: Values) => request("/api/companies", "POST", values),
+  updateCompany: (id: string, values: Values) => request(`/api/companies/${id}`, "PATCH", values),
+  deleteCompany: (id: string) => request(`/api/companies/${id}`, "DELETE"),
+  /** 取引先の進み具合を切り替える。 */
+  setCompanyStatus: (id: string, statusId: string) =>
+    request(`/api/companies/${id}/status`, "POST", { statusId }),
+
+  createBusinessCard: (values: Values) => request("/api/business-cards", "POST", values),
+  updateBusinessCard: (id: string, values: Values) =>
+    request(`/api/business-cards/${id}`, "PATCH", values),
+  deleteBusinessCard: (id: string) => request(`/api/business-cards/${id}`, "DELETE"),
+  /** 名刺画像を読み取るだけ。保存はしない。 */
+  scanBusinessCard: (imageDataUrl: string) =>
+    request<{ card: Record<string, string | null>; candidates: { id: string; name: string }[] }>(
+      "/api/business-cards/scan",
+      "POST",
+      { imageDataUrl }
+    ),
+
+  createCompanyStatus: (values: Values) => request("/api/company-statuses", "POST", values),
+  updateCompanyStatus: (id: string, values: Values) =>
+    request(`/api/company-statuses/${id}`, "PATCH", values),
+  deleteCompanyStatus: (id: string) => request(`/api/company-statuses/${id}`, "DELETE"),
+  reorderCompanyStatuses: (ids: string[]) =>
+    request("/api/company-statuses/reorder", "POST", { ids }),
+  setCompanyStatusArchived: (id: string, archived: boolean) =>
+    request(`/api/company-statuses/${id}/archive`, "POST", { archived }),
+
   createProject: (values: Values) => request("/api/projects", "POST", values),
   updateProject: (id: string, values: Values) => request(`/api/projects/${id}`, "PATCH", values),
   deleteProject: (id: string) => request(`/api/projects/${id}`, "DELETE"),
