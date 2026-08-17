@@ -9,17 +9,30 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
- * 縮小後の長辺。
+ * 送信量の目安（データ URI にしたあとの文字数）。
  *
- * Vercel のリクエストボディ上限は 4.5MB で変更できないため、スマートフォンの
- * 写真（3〜5MB、base64 にすると 1.33 倍）をそのまま送ると 413 になる。
+ * ここが読み取りの待ち時間を大きく左右する。実測では、細かい模様が多い
+ * 1,270KB の画像で 56 秒かかったのに対し、36KB の画像は 4 秒で返った。
+ * 実機の写真（380KB）は Vercel から投げて 100 秒でも返らなかった。
  *
- * 1280px にしているのは、送信量が読み取りの待ち時間に効くため。名刺の文字は
- * 大きいので 1280px でも十分読めるうえ、1600px と比べて画素数がおよそ 6 割に
- * 減り、読み取りに渡すトークン量（幅 × 高さ ÷ 750）も 1,400 程度で済む。
+ * Vercel のリクエストボディ上限（4.5MB・変更不可）に収めるだけでは足りず、
+ * 「速く返ってくる大きさ」まで落とす必要がある。
  */
-const MAX_EDGE = 1280;
-const JPEG_QUALITY = 0.8;
+const TARGET_BYTES = 200 * 1024;
+
+/**
+ * 縮小の試行順。上から順に試し、TARGET_BYTES に収まった時点で止める。
+ *
+ * まず画質を落とし、それでも大きければ寸法を下げる。名刺の文字は大きいので、
+ * 多少眠い画でも読み取りには足りる（1,000px あれば 6pt の文字で 20px 以上）。
+ */
+const ATTEMPTS: { edge: number; quality: number }[] = [
+  { edge: 1280, quality: 0.78 },
+  { edge: 1280, quality: 0.62 },
+  { edge: 1100, quality: 0.6 },
+  { edge: 1000, quality: 0.55 },
+  { edge: 900, quality: 0.5 },
+];
 
 export type CaptureResult = {
   card: ScannedCard;
@@ -38,7 +51,7 @@ type CardCaptureProps = {
 };
 
 /**
- * 画像を縮小してデータ URI にする。
+ * 画像を縮小してデータ URI にする。目安の大きさに収まるまで段階的に落とす。
  *
  * canvas を通すので EXIF の回転情報は落ちるが、createImageBitmap に
  * imageOrientation を渡すことでブラウザ側に向きを直させている
@@ -47,21 +60,32 @@ type CardCaptureProps = {
 async function toResizedDataUrl(file: File): Promise<string> {
   const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
 
-  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
-  const width = Math.round(bitmap.width * scale);
-  const height = Math.round(bitmap.height * scale);
+  try {
+    let last = "";
 
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
+    for (const { edge, quality } of ATTEMPTS) {
+      const scale = Math.min(1, edge / Math.max(bitmap.width, bitmap.height));
+      const width = Math.round(bitmap.width * scale);
+      const height = Math.round(bitmap.height * scale);
 
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("画像を処理できませんでした。");
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
 
-  context.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close();
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("画像を処理できませんでした。");
 
-  return canvas.toDataURL("image/jpeg", JPEG_QUALITY);
+      context.drawImage(bitmap, 0, 0, width, height);
+      last = canvas.toDataURL("image/jpeg", quality);
+
+      if (last.length <= TARGET_BYTES) return last;
+    }
+
+    // 一番小さい設定でも収まらなければ、それを使う（送れないよりはよい）
+    return last;
+  } finally {
+    bitmap.close();
+  }
 }
 
 export function CardCapture({
