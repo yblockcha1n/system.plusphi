@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchExternal, type ExternalResponse } from "@/lib/http";
 import { parseInspirationUrl, type ParsedUrl } from "@/features/inspirations/url";
 
 /**
@@ -46,15 +47,13 @@ const TIMEOUT_MS = 8000;
  */
 const USER_AGENT = "Mozilla/5.0 (compatible; plusphi-knowledge/1.0)";
 
-async function get(url: string): Promise<Response | null> {
+async function get(url: string): Promise<ExternalResponse | null> {
   try {
-    const response = await fetch(url, {
+    const response = await fetchExternal(url, {
       // Accept-Language は送らない。付けると Instagram が言語ごとに違う文面の
       // HTML を返し、抽出が言語に左右されてしまう（既定の英語版に固定する）。
       headers: { "User-Agent": USER_AGENT },
       signal: AbortSignal.timeout(TIMEOUT_MS),
-      // 取得結果は DB に保存するので、Next.js 側のキャッシュには載せない
-      cache: "no-store",
     });
 
     return response.ok ? response : null;

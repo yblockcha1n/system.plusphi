@@ -1,5 +1,6 @@
 import "server-only";
 import { env } from "@/lib/env";
+import { fetchExternal, type ExternalResponse } from "@/lib/http";
 
 /**
  * Perplexity Agent API を叩く薄い口。
@@ -80,10 +81,11 @@ export async function askAgent({
   const started = Date.now();
   const elapsed = () => ((Date.now() - started) / 1000).toFixed(1);
 
-  let response: Response;
+  let response: ExternalResponse;
 
   try {
-    response = await fetch(ENDPOINT, {
+    // fetchExternal: Vercel から IPv6 で出ようとして無応答になるのを避ける（lib/http.ts）
+    response = await fetchExternal(ENDPOINT, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${env.PERPLEXITY_API_KEY}`,
