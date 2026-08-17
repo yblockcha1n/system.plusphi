@@ -83,15 +83,15 @@ export function BusinessCardSheet({
   const [companyId, setCompanyId] = useState<string>(initialCompany);
   const [source, setSource] = useState<CardSource>(initialSource);
   const [draft, setDraft] = useState<Draft>(initialDraft);
-  // 撮影した画像。空なら「変えない」（編集時は保存済みのものが残る）。
-  const [imageDataUrl, setImageDataUrl] = useState("");
+  // 読み取り時に保存された画像のパス。空なら「変えない」（編集時は既存が残る）。
+  const [imagePath, setImagePath] = useState("");
 
   // 開き直したときに前回の入力・選択が残らないようにする
   const formKey = useFormResetKey(open, () => {
     setCompanyId(initialCompany);
     setSource(initialSource);
     setDraft(initialDraft);
-    setImageDataUrl("");
+    setImagePath("");
   });
 
   /** 読み取り結果・vCard をフォームへ流し込む。空の項目は今の値を残す。 */
@@ -118,7 +118,7 @@ export function BusinessCardSheet({
   };
 
   const handleCapture = (result: CaptureResult) => {
-    setImageDataUrl(result.imageDataUrl);
+    setImagePath(result.imagePath);
     // スクリーンショットか紙かは人にしか分からないので、既定は紙にしておく
     setSource((current) => (current === "manual" ? "paper" : current));
     applyScanned(result.card, result.candidates);
@@ -185,7 +185,7 @@ export function BusinessCardSheet({
         <form key={formKey} onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="@container flex flex-1 flex-col gap-5 overflow-y-auto p-4">
             {card && <input type="hidden" name="id" value={card.id} />}
-            <input type="hidden" name="imageDataUrl" value={imageDataUrl} />
+            <input type="hidden" name="imagePath" value={imagePath} />
 
             {/* 取り込みの入り口。ここで埋めてから下の項目を直す流れ。 */}
             <div className="flex flex-col gap-2 border bg-muted/30 p-3">
@@ -193,7 +193,7 @@ export function BusinessCardSheet({
                 onScanned={handleCapture}
                 ocrEnabled={ocrEnabled}
                 previewUrl={card?.imageUrl}
-                onClear={() => setImageDataUrl("")}
+                onClear={() => setImagePath("")}
               />
 
               <label className="flex cursor-pointer items-center justify-center gap-1.5 border bg-background px-2.5 py-2 text-sm font-medium transition-colors hover:bg-muted">

@@ -61,8 +61,11 @@ export const businessCardFormSchema = z.object({
       "日付の形式が不正です"
     ),
   note: optionalText(2000),
-  /** ブラウザで縮小した画像のデータ URI。既存のまま変えないときは空。 */
-  imageDataUrl: z.string().trim().max(8_000_000).optional(),
+  /**
+   * 読み取り時に保存した画像の Storage 上のパス。
+   * 空なら画像は変えない（編集時に既存のものを残す）。
+   */
+  imagePath: optionalText(200),
 });
 
 export type BusinessCardFormInput = z.input<typeof businessCardFormSchema>;

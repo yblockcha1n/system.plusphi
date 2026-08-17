@@ -37,7 +37,8 @@ const ATTEMPTS: { edge: number; quality: number }[] = [
 export type CaptureResult = {
   card: ScannedCard;
   candidates: { id: string; name: string }[];
-  imageDataUrl: string;
+  /** 保存済み画像の Storage 上のパス。保存時はこれを送る。 */
+  imagePath: string;
 };
 
 type CardCaptureProps = {
@@ -110,30 +111,26 @@ export function CardCapture({
         `[名刺] 元 ${Math.round(file.size / 1024)}KB → 送信 ${Math.round(imageDataUrl.length / 1024)}KB`
       );
 
-      if (!ocrEnabled) {
-        // 読み取りは使えないが、画像だけは保存できるようにする
-        onScanned({
-          card: emptyCard(),
-          candidates: [],
-          imageDataUrl,
-        });
-        return;
-      }
-
+      // 画像の保存と読み取りはサーバー側でまとめて行う。
+      // 読み取りへ画像そのものを送らず URL を渡すため（storage.ts 参照）。
       const result = await api.scanBusinessCard(imageDataUrl);
 
       if (result.status === "error" || !result.data) {
-        toast.error(result.message ?? "読み取りに失敗しました。");
-        // 読めなくても画像は残し、手入力で続けられるようにする
-        onScanned({ card: emptyCard(), candidates: [], imageDataUrl });
+        toast.error(result.message ?? "画像を保存できませんでした。");
         return;
       }
 
-      toast.success(result.message);
+      // 読み取りに失敗しても画像は保存できている。手入力で続けられる。
+      if (result.data.failed) {
+        toast.error(result.message ?? "読み取れませんでした。");
+      } else if (ocrEnabled) {
+        toast.success(result.message);
+      }
+
       onScanned({
         card: result.data.card as unknown as ScannedCard,
         candidates: result.data.candidates,
-        imageDataUrl,
+        imagePath: result.data.imagePath,
       });
     } catch (cause) {
       toast.error(
@@ -203,17 +200,3 @@ export function CardCapture({
   );
 }
 
-function emptyCard(): ScannedCard {
-  return {
-    companyName: null,
-    fullName: null,
-    fullNameKana: null,
-    department: null,
-    title: null,
-    email: null,
-    phone: null,
-    mobile: null,
-    website: null,
-    address: null,
-  };
-}

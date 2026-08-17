@@ -54,10 +54,13 @@ export type ScanResult =
   | { status: "error"; message: string };
 
 /**
- * @param imageDataUrl ブラウザで縮小済みのデータ URI。
- *   縮小は必須（Vercel のボディ上限 4.5MB は変更できないため）。
+ * @param imageUrl 保存済み画像の署名付き URL。
+ *
+ *   画像そのものを送らず URL を渡す。実測で、Vercel の関数から 180KB の本文を
+ *   送ると 100 秒経っても返らなかったのに対し、URL なら 9 秒で返った
+ *   （features/business-cards/storage.ts の stageCardImage 参照）。
  */
-export async function scanBusinessCard(imageDataUrl: string): Promise<ScanResult> {
+export async function scanBusinessCard(imageUrl: string): Promise<ScanResult> {
   if (!isPerplexityConfigured()) {
     return {
       status: "error",
@@ -69,7 +72,7 @@ export async function scanBusinessCard(imageDataUrl: string): Promise<ScanResult
     const raw = await askAgent({
       instructions: INSTRUCTIONS,
       text: "この名刺を読み取ってください。",
-      imageUrls: [imageDataUrl],
+      imageUrls: [imageUrl],
       maxOutputTokens: 800,
     });
 

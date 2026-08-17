@@ -4,7 +4,7 @@ import { z } from "zod";
 import { supabase } from "@/lib/supabase";
 import { idField, textField, toErrorState, type ActionState } from "@/lib/form";
 import { businessCardFormSchema } from "@/features/business-cards/schema";
-import { deleteCardImage, storeCardImage } from "@/features/business-cards/storage";
+import { deleteCardImage } from "@/features/business-cards/storage";
 import type { SessionPayload } from "@/lib/session";
 
 const LIST_PATH = "/companies";
@@ -33,14 +33,14 @@ export async function saveBusinessCard(
     source: textField(input, "source"),
     receivedAt: textField(input, "receivedAt"),
     note: textField(input, "note"),
-    imageDataUrl: textField(input, "imageDataUrl"),
+    imagePath: textField(input, "imagePath"),
   });
 
   if (!parsed.success) {
     return toErrorState(parsed.error);
   }
 
-  const { id, imageDataUrl, ...fields } = parsed.data;
+  const { id, imagePath, ...fields } = parsed.data;
 
   const values = {
     company_id: fields.companyId,
@@ -55,28 +55,19 @@ export async function saveBusinessCard(
     source: fields.source,
     received_at: fields.receivedAt,
     note: fields.note,
+    // 画像は読み取りの時点で保存済み。空なら既存のものを残す。
+    ...(imagePath ? { image_path: imagePath } : {}),
   };
 
-  const { data, error } = id
-    ? await supabase.from("business_cards").update(values).eq("id", id).select("id").single()
+  const { error } = id
+    ? await supabase.from("business_cards").update(values).eq("id", id)
     : // 登録者はセッションから取る。リクエストの値を信用すると詐称できてしまう。
       await supabase
         .from("business_cards")
-        .insert({ ...values, created_by: session.email })
-        .select("id")
-        .single();
+        .insert({ ...values, created_by: session.email });
 
   if (error) {
     return { status: "error", message: `保存に失敗しました: ${error.message}` };
-  }
-
-  // 画像は送られてきたときだけ差し替える。空なら既存のものをそのまま残す。
-  if (imageDataUrl) {
-    const path = await storeCardImage(data.id, imageDataUrl);
-
-    if (path) {
-      await supabase.from("business_cards").update({ image_path: path }).eq("id", data.id);
-    }
   }
 
   revalidateAll();

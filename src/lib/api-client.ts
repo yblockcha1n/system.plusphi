@@ -69,7 +69,12 @@ export const api = {
   deleteBusinessCard: (id: string) => request(`/api/business-cards/${id}`, "DELETE"),
   /** 名刺画像を読み取るだけ。保存はしない。 */
   scanBusinessCard: (imageDataUrl: string) =>
-    request<{ card: Record<string, string | null>; candidates: { id: string; name: string }[] }>(
+    request<{
+      card: Record<string, string | null>;
+      candidates: { id: string; name: string }[];
+      imagePath: string;
+      failed?: boolean;
+    }>(
       "/api/business-cards/scan",
       "POST",
       { imageDataUrl }
