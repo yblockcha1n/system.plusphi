@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeftIcon, ExternalLinkIcon } from "lucide-react";
 import { env } from "@/lib/env";
 import { getCompany, getCompanyOptions } from "@/features/companies/queries";
+import { getCompanyStatusOptions } from "@/features/company-statuses/queries";
 import { getBusinessCards } from "@/features/business-cards/queries";
 import { PageHeader, Panel, PanelHeader } from "@/components/shared/page-header";
 import { BusinessCardList } from "@/components/business-cards/business-card-list";
@@ -24,9 +25,10 @@ export default async function CompanyDetailPage(props: PageProps<"/companies/[id
     notFound();
   }
 
-  const [cards, companies] = await Promise.all([
+  const [cards, companies, statuses] = await Promise.all([
     getBusinessCards({ companyId: company.id }),
     getCompanyOptions(),
+    getCompanyStatusOptions(),
   ]);
 
   return (
@@ -80,6 +82,7 @@ export default async function CompanyDetailPage(props: PageProps<"/companies/[id
           <BusinessCardList
             cards={cards}
             companies={companies}
+            statuses={statuses}
             ocrEnabled={Boolean(env.PERPLEXITY_API_KEY)}
             defaultCompanyId={company.id}
             showCompany={false}

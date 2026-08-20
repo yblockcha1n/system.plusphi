@@ -149,8 +149,11 @@ export function CardCapture({
         ref={inputRef}
         type="file"
         accept="image/*"
-        // スマートフォンでは背面カメラが直接開く
-        capture="environment"
+        /*
+         * capture は付けない。付けるとカメラが直接開いてしまい、
+         * 保存済みの写真から選べなくなる。付けなければ iOS / Android とも
+         * 「写真を撮る / ライブラリから選ぶ / ファイル」を選ばせる画面が出る。
+         */
         className="hidden"
         onChange={(event) => {
           const file = event.target.files?.[0];
@@ -162,7 +165,7 @@ export function CardCapture({
         <div className="relative overflow-hidden border bg-muted/30">
           {/* 名刺は横長。署名付き URL もデータ URI も素の img で出す。 */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={preview} alt="名刺の画像" className="max-h-56 w-full object-contain" />
+          <img src={preview} alt="名刺の画像" className="max-h-72 w-full bg-black/5 object-contain dark:bg-white/5" />
 
           <Button
             type="button"
@@ -191,9 +194,9 @@ export function CardCapture({
         {pending
           ? "読み取っています…"
           : preview
-            ? "撮り直す"
+            ? "撮り直す・選び直す"
             : ocrEnabled
-              ? "名刺を撮影して読み取る"
+              ? "名刺を撮影 / 選択して読み取る"
               : "名刺の画像を選ぶ"}
       </Button>
     </div>

@@ -217,8 +217,10 @@ export type CompanyRow = {
 /** 名刺（＝担当者）。0010 で追加。 */
 export type BusinessCardRow = {
   id: string;
-  /** null = 会社未設定。 */
+  /** null = 会社未設定。個人や知人はこの状態のまま単独で扱う。 */
   company_id: string | null;
+  /** 名刺そのものの進み具合。会社と同じマスタを共有する。0011 で追加。 */
+  status_id: string | null;
   full_name: string;
   full_name_kana: string | null;
   department: string | null;

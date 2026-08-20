@@ -43,6 +43,13 @@ const optionalUrl = z
 export const businessCardFormSchema = z.object({
   id: z.uuid().optional(),
   companyId: optionalUuid,
+  /** 名刺そのものの進み具合。会社に属さない相手でも単独で追える。 */
+  statusId: optionalUuid,
+  /**
+   * 読み取れた会社名。companyId が空のときだけ使い、
+   * 同名の取引先が無ければ保存時に作る（features/business-cards/service.ts）。
+   */
+  companyName: optionalText(200),
   fullName: z.string().trim().min(1, "氏名は必須です").max(100),
   fullNameKana: optionalText(100),
   department: optionalText(100),
@@ -75,6 +82,8 @@ export type BusinessCardItem = {
   id: string;
   companyId: string | null;
   companyName: string | null;
+  statusId: string | null;
+  statusName: string | null;
   fullName: string;
   fullNameKana: string | null;
   department: string | null;

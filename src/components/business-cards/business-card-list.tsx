@@ -15,22 +15,28 @@ import {
   CARD_SOURCE_LABELS,
   type BusinessCardItem,
 } from "@/features/business-cards/schema";
+import type { CompanyStatusOption } from "@/features/company-statuses/schema";
 import { BusinessCardSheet } from "@/components/business-cards/business-card-sheet";
 import { ConfirmDeleteDialog } from "@/components/shared/confirm-delete-dialog";
 import { EmptyState } from "@/components/shared/page-header";
+import { useApiMutation } from "@/components/shared/use-api";
 import { useSheetTarget } from "@/components/shared/use-sheet-target";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 
 type BusinessCardListProps = {
   cards: BusinessCardItem[];
   companies: { id: string; name: string }[];
+  statuses: CompanyStatusOption[];
   ocrEnabled: boolean;
   /** 会社詳細から使うとき、新規登録の取引先を固定する。 */
   defaultCompanyId?: string | null;
@@ -41,6 +47,7 @@ type BusinessCardListProps = {
 export function BusinessCardList({
   cards,
   companies,
+  statuses,
   ocrEnabled,
   defaultCompanyId,
   showCompany = true,
@@ -74,12 +81,13 @@ export function BusinessCardList({
                   src={card.imageUrl}
                   alt=""
                   loading="lazy"
-                  className="hidden h-14 w-24 shrink-0 border object-cover sm:block"
+                  className="h-16 w-24 shrink-0 border object-cover sm:h-14"
                 />
               )}
 
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-baseline gap-x-2">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <CardStatusBadge card={card} statuses={statuses} />
                   <span className="text-sm font-medium">{card.fullName}</span>
                   {card.fullNameKana && (
                     <span className="text-xs text-muted-foreground">{card.fullNameKana}</span>
@@ -175,6 +183,7 @@ export function BusinessCardList({
         card={editSheet.target}
         defaultCompanyId={defaultCompanyId}
         companies={companies}
+        statuses={statuses}
         ocrEnabled={ocrEnabled}
       />
 
@@ -186,5 +195,67 @@ export function BusinessCardList({
         onConfirm={() => api.deleteBusinessCard(deleteDialog.target?.id as string)}
       />
     </>
+  );
+}
+
+/**
+ * 名刺そのものの進み具合。押してその場で変えられる。
+ *
+ * 会社に属さない相手（個人事業主・知人など）も、これで単独で追える。
+ */
+function CardStatusBadge({
+  card,
+  statuses,
+}: {
+  card: BusinessCardItem;
+  statuses: CompanyStatusOption[];
+}) {
+  const { run, pending } = useApiMutation();
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <button
+            type="button"
+            disabled={pending}
+            aria-label={`${card.fullName} のステータスを変更（現在: ${card.statusName ?? "未設定"}）`}
+            className={cn(
+              "shrink-0 border px-1.5 py-0.5 text-[0.625rem] font-medium whitespace-nowrap transition-colors",
+              card.statusName
+                ? "border-foreground bg-foreground text-background"
+                : "border-border text-muted-foreground",
+              pending && "opacity-60"
+            )}
+          >
+            {card.statusName ?? "未設定"}
+          </button>
+        }
+      />
+      <DropdownMenuContent align="start" className="w-auto min-w-36">
+        {/* DropdownMenuLabel は Group の中でしか使えない */}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>ステータスを変更</DropdownMenuLabel>
+          {statuses.map((status) => (
+            <DropdownMenuItem
+              key={status.id}
+              disabled={status.id === card.statusId}
+              onClick={() =>
+                run(() => api.setBusinessCardStatus(card.id, status.id), { silent: true })
+              }
+            >
+              {status.name}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            disabled={card.statusId === null}
+            onClick={() => run(() => api.setBusinessCardStatus(card.id, ""), { silent: true })}
+          >
+            未設定に戻す
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

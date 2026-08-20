@@ -75,7 +75,7 @@ export function CompanySheet({
         </SheetHeader>
 
         <form key={formKey} onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
-          <div className="@container flex flex-1 flex-col gap-5 overflow-y-auto p-4">
+          <div className="@container flex min-w-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto p-4">
             {company && <input type="hidden" name="id" value={company.id} />}
 
             <Field label="会社名" htmlFor="company-name" errors={state.fieldErrors?.name}>
@@ -120,7 +120,7 @@ export function CompanySheet({
               />
             </Field>
 
-            <div className="grid gap-5 @md:grid-cols-2">
+            <div className="grid gap-5 *:min-w-0 @md:grid-cols-2">
               <Field label="電話" htmlFor="company-phone" errors={state.fieldErrors?.phone}>
                 <Input
                   id="company-phone"

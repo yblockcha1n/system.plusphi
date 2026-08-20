@@ -1,5 +1,6 @@
 import {
   BuildingIcon,
+  ContactIcon,
   CalendarDaysIcon,
   FolderKanbanIcon,
   HouseIcon,
@@ -47,6 +48,7 @@ export const navGroups: NavGroup[] = [
       { href: "/calendar", label: "カレンダー", icon: CalendarDaysIcon },
       { href: "/projects", label: "プロジェクト", icon: FolderKanbanIcon },
       { href: "/companies", label: "取引先", icon: BuildingIcon },
+      { href: "/business-cards", label: "名刺", icon: ContactIcon },
     ],
   },
   {

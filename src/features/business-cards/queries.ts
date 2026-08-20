@@ -11,6 +11,8 @@ import type { BusinessCardRow } from "@/lib/database.types";
 export type BusinessCardFilter = {
   /** 特定の会社の名刺だけを引く。null は「会社未設定」。 */
   companyId?: string | null;
+  /** ステータスで絞り込む。 */
+  statusId?: string;
   /** 氏名・ふりがな・メール・会社名へのあいまい検索。 */
   keyword?: string;
 };
@@ -18,12 +20,15 @@ export type BusinessCardFilter = {
 function toItem(
   row: BusinessCardRow,
   companyNames: Map<string, string>,
+  statusNames: Map<string, string>,
   signed: Map<string, string>
 ): BusinessCardItem {
   return {
     id: row.id,
     companyId: row.company_id,
     companyName: row.company_id ? (companyNames.get(row.company_id) ?? null) : null,
+    statusId: row.status_id,
+    statusName: row.status_id ? (statusNames.get(row.status_id) ?? null) : null,
     fullName: row.full_name,
     fullNameKana: row.full_name_kana,
     department: row.department,
@@ -63,6 +68,8 @@ export async function getBusinessCards(
         : query.eq("company_id", filter.companyId);
   }
 
+  if (filter.statusId) query = query.eq("status_id", filter.statusId);
+
   if (filter.keyword) {
     // PostgREST の or() では値中の "," と "." が区切りと紛らわしいので落とす
     const keyword = filter.keyword.replace(/[,.()]/g, " ").trim();
@@ -80,9 +87,10 @@ export async function getBusinessCards(
     }
   }
 
-  const [cardsResult, companiesResult] = await Promise.all([
+  const [cardsResult, companiesResult, statusesResult] = await Promise.all([
     query,
     supabase.from("companies").select("id, name"),
+    supabase.from("company_statuses").select("id, name"),
   ]);
 
   if (cardsResult.error) {
@@ -91,14 +99,19 @@ export async function getBusinessCards(
   if (companiesResult.error) {
     throw new Error(`取引先の取得に失敗しました: ${companiesResult.error.message}`);
   }
+  if (statusesResult.error) {
+    throw new Error(`ステータスの取得に失敗しました: ${statusesResult.error.message}`);
+  }
 
   const companyNames = new Map(companiesResult.data.map((row) => [row.id, row.name]));
+  // 閉じたステータスも含めて引く。過去に付けた名前は出したいため。
+  const statusNames = new Map(statusesResult.data.map((row) => [row.id, row.name]));
   const signed = await signObjects(
     CARD_BUCKET,
     cardsResult.data.map((row) => row.image_path)
   );
 
-  return cardsResult.data.map((row) => toItem(row, companyNames, signed));
+  return cardsResult.data.map((row) => toItem(row, companyNames, statusNames, signed));
 }
 
 /**

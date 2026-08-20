@@ -67,6 +67,9 @@ export const api = {
   updateBusinessCard: (id: string, values: Values) =>
     request(`/api/business-cards/${id}`, "PATCH", values),
   deleteBusinessCard: (id: string) => request(`/api/business-cards/${id}`, "DELETE"),
+  /** 名刺そのものの進み具合を切り替える。 */
+  setBusinessCardStatus: (id: string, statusId: string) =>
+    request(`/api/business-cards/${id}/status`, "POST", { statusId }),
   /** 名刺画像を読み取るだけ。保存はしない。 */
   scanBusinessCard: (imageDataUrl: string) =>
     request<{
