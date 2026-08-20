@@ -35,9 +35,12 @@ export async function getCalendarData(
   rangeEnd: Date,
   // 既定は担当者。ホームの「今日の予定」もカレンダーと同じ色で出したいため
   // （toCalendarColorMode の既定と揃えること）。
-  colorMode: CalendarColorMode = "user"
+  colorMode: CalendarColorMode = "user",
+  // ホームの「今日の予定」は自分の 1 日を見る場所なので、他人の予定まで
+  // 並べると使えない。カレンダー画面は全員ぶんを見たいので既定は false。
+  options: { onlyMine?: boolean } = {}
 ): Promise<CalendarData> {
-  await requireSession();
+  const session = await requireSession();
 
   const startIso = rangeStart.toISOString();
   const endIso = rangeEnd.toISOString();
@@ -118,13 +121,37 @@ export async function getCalendarData(
 
   const tasks = tasksResult.data.map((row) => mapTaskRow(row, projects));
 
+  const visibleEvents = options.onlyMine
+    ? events.filter((event) => isMyEvent(event, session.email))
+    : events;
+  const visibleTasks = options.onlyMine
+    ? tasks.filter((task) => isMyTask(task, session.email))
+    : tasks;
+
   return {
-    events,
+    events: visibleEvents,
     entries: [
-      ...toEventEntries(events, rangeStart, rangeEnd, colorMode),
-      ...toTaskEntries(tasks, rangeStart, rangeEnd, colorMode),
+      ...toEventEntries(visibleEvents, rangeStart, rangeEnd, colorMode),
+      ...toTaskEntries(visibleTasks, rangeStart, rangeEnd, colorMode),
     ],
   };
+}
+
+/**
+ * 自分が関わっている予定か。
+ *
+ * 担当者に入っていれば当然として、作成者も含める。担当者を入れずに作った予定が
+ * 作った本人からも消えると、ホームの「今日の予定」が空になってしまうため。
+ * 担当者の指定は 0006 で入れた後付けの機能なので、それ以前の予定は誰も
+ * 入っていない状態で残っている。
+ */
+function isMyEvent(event: EventItem, viewer: string): boolean {
+  return event.assignees.includes(viewer) || event.createdBy === viewer;
+}
+
+/** 自分が関わっているタスクか。担当・検収・作成のどれかで関わっていれば出す。 */
+function isMyTask(task: TaskItem, viewer: string): boolean {
+  return task.assignee === viewer || task.reviewer === viewer || task.createdBy === viewer;
 }
 
 /**

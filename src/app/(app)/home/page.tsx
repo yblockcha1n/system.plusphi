@@ -17,6 +17,21 @@ export const metadata: Metadata = {
   title: "ホーム | plusphi",
 };
 
+/**
+ * 一度に出す件数。
+ *
+ * ここは「今どうなっているか」を掴む場所で、一覧そのものは各画面にある。
+ * 全部並べるとスクロールが長くなって掴めなくなるので上限を置く。
+ * 特にスマホは 1 画面に入る量が少ないので、狭い画面では更に絞る。
+ *
+ * 溢れたぶんは CSS で隠すだけなので、画面を広げれば読み込み直さずに伸びる。
+ * 隠した件数は各パネルの下に出し、「これで全部」と誤解させない。
+ */
+const LIMIT = {
+  entries: { mobile: 3, desktop: 6 },
+  tasks: { mobile: 4, desktop: 8 },
+} as const;
+
 export default async function HomePage() {
   const [home, projects, taskTypes] = await Promise.all([
     getHomeData(),
@@ -70,11 +85,17 @@ export default async function HomePage() {
           </PanelHeader>
 
           {home.todayEntries.length === 0 ? (
-            <EmptyState>今日の予定はありません。</EmptyState>
+            <EmptyState>参加している今日の予定はありません。</EmptyState>
           ) : (
             <ul className="divide-y">
-              {home.todayEntries.map((entry) => (
-                <li key={entry.key} className="flex items-center gap-3 px-3 py-2.5">
+              {home.todayEntries.slice(0, LIMIT.entries.desktop).map((entry, index) => (
+                <li
+                  key={entry.key}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5",
+                    index >= LIMIT.entries.mobile && "max-sm:hidden"
+                  )}
+                >
                   <span
                     className={cn("w-1 shrink-0 self-stretch", PROJECT_COLORS[entry.color].bar)}
                     aria-hidden
@@ -98,6 +119,8 @@ export default async function HomePage() {
               ))}
             </ul>
           )}
+
+          <MoreLink total={home.todayEntries.length} limit={LIMIT.entries} href="/calendar" />
         </Panel>
 
         <Panel>
@@ -113,12 +136,15 @@ export default async function HomePage() {
           </PanelHeader>
 
           <TaskList
-            tasks={home.myTasks.slice(0, 8)}
+            tasks={home.myTasks.slice(0, LIMIT.tasks.desktop)}
             projects={projects}
             taskTypes={taskTypes}
             users={users}
+            mobileLimit={LIMIT.tasks.mobile}
             emptyMessage="担当しているタスクはありません。"
           />
+
+          <MoreLink total={home.myTasks.length} limit={LIMIT.tasks} href="/tasks?scope=mine" />
         </Panel>
 
         {home.awaitingReview.length > 0 && (
@@ -128,10 +154,17 @@ export default async function HomePage() {
               <h3 className="font-heading text-sm font-semibold">自分が検収するタスク</h3>
             </PanelHeader>
             <TaskList
-              tasks={home.awaitingReview}
+              tasks={home.awaitingReview.slice(0, LIMIT.tasks.desktop)}
               projects={projects}
               taskTypes={taskTypes}
               users={users}
+              mobileLimit={LIMIT.tasks.mobile}
+            />
+
+            <MoreLink
+              total={home.awaitingReview.length}
+              limit={LIMIT.tasks}
+              href="/tasks?scope=review"
             />
           </Panel>
         )}
@@ -143,11 +176,14 @@ export default async function HomePage() {
               <h3 className="font-heading text-sm font-semibold text-destructive">締切超過</h3>
             </PanelHeader>
             <TaskList
-              tasks={home.overdue}
+              tasks={home.overdue.slice(0, LIMIT.tasks.desktop)}
               projects={projects}
               taskTypes={taskTypes}
               users={users}
+              mobileLimit={LIMIT.tasks.mobile}
             />
+
+            <MoreLink total={home.overdue.length} limit={LIMIT.tasks} href="/tasks" />
           </Panel>
         )}
       </div>
@@ -195,6 +231,44 @@ export default async function HomePage() {
         )}
       </Panel>
     </div>
+  );
+}
+
+/**
+ * 隠したぶんの件数と、続きを見る先。
+ *
+ * 出す件数が画面幅で違うので、余りの数も 2 つ書いて CSS で切り替える。
+ * 幅を JavaScript で測ると、サーバーで描いたものと食い違って一瞬ちらつくため。
+ */
+function MoreLink({
+  total,
+  limit,
+  href,
+}: {
+  total: number;
+  limit: { mobile: number; desktop: number };
+  href: string;
+}) {
+  const className =
+    "block border-t px-3 py-2 text-center text-xs text-muted-foreground transition-colors hover:bg-muted/40";
+
+  const restMobile = total - limit.mobile;
+  const restDesktop = total - limit.desktop;
+
+  if (restMobile <= 0) return null;
+
+  return (
+    <>
+      {restDesktop > 0 && (
+        <Link href={href} className={cn(className, "max-sm:hidden")}>
+          ほか {restDesktop} 件を見る
+        </Link>
+      )}
+
+      <Link href={href} className={cn(className, "sm:hidden")}>
+        ほか {restMobile} 件を見る
+      </Link>
+    </>
   );
 }
 

@@ -13,6 +13,7 @@ export type HomeData = {
   viewer: { email: string; name: string };
   /** ISO 文字列。表示は lib/datetime.ts 経由で JST 固定にする。 */
   today: string;
+  /** 今日の予定のうち、自分が関わっているものだけ。 */
   todayEntries: CalendarEntry[];
   /** 自分が担当で未完了のタスク（締切が近い順）。 */
   myTasks: TaskItem[];
@@ -32,7 +33,9 @@ export async function getHomeData(): Promise<HomeData> {
   const now = Date.now();
 
   const [calendar, tasks, projects] = await Promise.all([
-    getCalendarData(today, tomorrow),
+    // 自分が関わっているものだけ。ここは自分の 1 日を見る場所なので、
+    // 全員ぶんが並ぶと今日どう動くかが読み取れない。
+    getCalendarData(today, tomorrow, "user", { onlyMine: true }),
     // ここで使う 3 つの一覧はどれも未完了タスクだけが対象なので、
     // 完了ぶんは SQL の時点で落としておく。
     getTasks({ includeDone: false }),

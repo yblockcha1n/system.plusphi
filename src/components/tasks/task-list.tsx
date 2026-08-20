@@ -44,6 +44,12 @@ type TaskListProps = {
   defaultProjectId?: string | null;
   /** プロジェクト詳細では所属プロジェクトが自明なので隠す。 */
   showProject?: boolean;
+  /**
+   * 狭い画面で見せる件数。これを超えるぶんは CSS で隠すだけなので、
+   * 画面を広げれば同じ一覧がそのまま伸びる（読み込み直しは起きない）。
+   * 省略すると全件出す。
+   */
+  mobileLimit?: number;
   emptyMessage?: string;
 };
 
@@ -54,6 +60,7 @@ export function TaskList({
   users,
   defaultProjectId,
   showProject = true,
+  mobileLimit,
   emptyMessage = "タスクがありません。",
 }: TaskListProps) {
   const editSheet = useSheetTarget<TaskItem>();
@@ -66,10 +73,11 @@ export function TaskList({
   return (
     <>
       <ul className="divide-y">
-        {tasks.map((task) => (
+        {tasks.map((task, index) => (
           <TaskRow
             key={task.id}
             task={task}
+            hiddenOnMobile={mobileLimit !== undefined && index >= mobileLimit}
             showProject={showProject}
             onEdit={() => editSheet.show(task)}
             onDelete={() => deleteDialog.show(task)}
@@ -101,11 +109,13 @@ export function TaskList({
 function TaskRow({
   task,
   showProject,
+  hiddenOnMobile,
   onEdit,
   onDelete,
 }: {
   task: TaskItem;
   showProject: boolean;
+  hiddenOnMobile: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -119,7 +129,13 @@ function TaskRow({
   const overdue = deadline !== null && task.status !== "done" && daysUntil(deadline, now) < 0;
 
   return (
-    <li className={cn("flex items-start gap-2 px-3 py-3 transition-colors hover:bg-muted/40", pending && "opacity-60")}>
+    <li
+      className={cn(
+        "flex items-start gap-2 px-3 py-3 transition-colors hover:bg-muted/40",
+        pending && "opacity-60",
+        hiddenOnMobile && "max-sm:hidden"
+      )}
+    >
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
