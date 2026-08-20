@@ -14,19 +14,22 @@ import { fetchExternal, type ExternalResponse } from "@/lib/http";
  *  - web 検索は tools を渡したときだけ走る。渡さなければ検索しない
  *  - HTTP 200 でも中で失敗していることがあるので status を必ず見る
  *  - モデル slug は "perplexity/sonar" のように接頭辞が要る。
- *    画像を読ませるには視覚対応のモデル（既定 openai/gpt-5-mini）を使う
+ *    画像を読ませるには視覚対応のモデルを使う（既定は env.ts 参照）
  */
 
 const ENDPOINT = "https://api.perplexity.ai/v1/agent";
 
 /**
- * 応答を待つ上限。
+ * 応答を待つ上限と、諦めたあとのやり直し回数。
  *
- * 手元から名刺 1 枚を投げると 4〜6 秒で返るが、Vercel の関数からだと大幅に
- * 延びることがあった。関数側の上限（Hobby でも既定 300 秒）よりは十分手前で
- * 諦めて、利用者に「読み取れなかった」と伝えられるようにしておく。
+ * 既定のモデルなら名刺 1 枚が 4 秒前後で返る。長く待つほど利用者を待たせるだけ
+ * なので短めに切り、たまたま詰まった場合は待つのではなく投げ直す。
+ * 実測では、同じ画像でも 1 回目だけ返らず 2 回目は普通に返ることがあった。
+ *
+ * 合計の待ち時間（35 秒 × 2）は、呼び出し側の関数の上限より内側に収めること。
  */
-const TIMEOUT_MS = 100_000;
+const TIMEOUT_MS = 35_000;
+const MAX_ATTEMPTS = 2;
 
 export function isPerplexityConfigured(): boolean {
   return Boolean(env.PERPLEXITY_API_KEY);
@@ -81,23 +84,38 @@ export async function askAgent({
   const started = Date.now();
   const elapsed = () => ((Date.now() - started) / 1000).toFixed(1);
 
-  let response: ExternalResponse;
+  let response: ExternalResponse | null = null;
+  let lastReason = "";
 
-  try {
-    // fetchExternal: Vercel から IPv6 で出ようとして無応答になるのを避ける（lib/http.ts）
-    response = await fetchExternal(ENDPOINT, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.PERPLEXITY_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      body: requestBody,
-    });
-  } catch (cause) {
-    const reason = cause instanceof Error ? cause.message : String(cause);
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    try {
+      // fetchExternal: Vercel から IPv6 で出ようとして無応答になるのを避ける（lib/http.ts）
+      response = await fetchExternal(ENDPOINT, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env.PERPLEXITY_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+        body: requestBody,
+      });
+      break;
+    } catch (cause) {
+      lastReason = cause instanceof Error ? cause.message : String(cause);
+
+      // 詰まったまま待つより投げ直したほうが早く返る（同じ画像でも起きる）
+      console.warn("[perplexity] 応答が無いのでやり直します", {
+        attempt,
+        sizeKb,
+        seconds: elapsed(),
+        reason: lastReason,
+      });
+    }
+  }
+
+  if (!response) {
     throw new Error(
-      `Perplexity への要求が終わりませんでした（送信 ${sizeKb}KB / ${elapsed()} 秒で中断: ${reason}）。`
+      `Perplexity への要求が終わりませんでした（送信 ${sizeKb}KB / ${MAX_ATTEMPTS} 回試して ${elapsed()} 秒: ${lastReason}）。`
     );
   }
 

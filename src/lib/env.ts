@@ -102,10 +102,16 @@ const envSchema = z.object({
    */
   PERPLEXITY_API_KEY: optionalSecret,
   /**
-   * 画像を読めるモデルの slug。"perplexity/" 系ではなく視覚対応のものを指定する。
-   * 正しい一覧は GET https://api.perplexity.ai/v1/models で確認できる。
+   * 名刺を読むモデルの slug。
+   *
+   * 実測で決めている。同じ名刺の写真で openai/gpt-5-mini は 1 回目が 90 秒
+   * かかって打ち切り、2 回目は 11.5 秒と大きくぶれた。gemini-3.5-flash-lite は
+   * 4 回連続で 3.6〜3.8 秒に収まり、読み取り内容もすべて一致した。
+   * 名刺のように「速さと安定が要る短い読み取り」には軽いモデルが向く。
+   *
+   * 差し替えるときは GET https://api.perplexity.ai/v1/models で slug を確認する。
    */
-  PERPLEXITY_VISION_MODEL: z.string().min(1).default("openai/gpt-5-mini"),
+  PERPLEXITY_VISION_MODEL: z.string().min(1).default("google/gemini-3.5-flash-lite"),
 });
 
 const parsed = envSchema.safeParse(process.env);
