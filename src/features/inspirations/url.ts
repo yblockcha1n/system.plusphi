@@ -19,6 +19,14 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
   other: "その他",
 };
 
+/**
+ * 中身の種類。「どう見せるか」を表す。
+ *
+ * website と link はどちらも普通の Web ページで、違うのは枠に入れられるかどうか。
+ * 相手が X-Frame-Options や CSP の frame-ancestors で拒んでいると iframe には
+ * 入らないので、metadata.ts が実際にヘッダを見て link に倒す（実測では 18 件中
+ * 15 件が拒んでいた。埋め込めない方が普通）。
+ */
 export const CONTENT_KINDS = [
   "reel",
   "post",
@@ -26,6 +34,8 @@ export const CONTENT_KINDS = [
   "short",
   "tweet",
   "account",
+  "website",
+  "link",
   "unknown",
 ] as const;
 export type ContentKind = (typeof CONTENT_KINDS)[number];
@@ -37,6 +47,8 @@ export const CONTENT_KIND_LABELS: Record<ContentKind, string> = {
   short: "ショート",
   tweet: "ポスト",
   account: "アカウント",
+  website: "Web ページ",
+  link: "Web ページ",
   unknown: "リンク",
 };
 
@@ -139,9 +151,12 @@ export function parseInspirationUrl(raw: string): ParsedUrl | null {
 
   if (parsed) return parsed;
 
+  // 既知のプラットフォームでなければ普通の Web ページとして扱う。
+  // 枠に入るかどうかはヘッダを見ないと分からないので、ここでは website にしておき、
+  // 拒まれていれば metadata.ts が link に倒す。
   return {
     platform: "other",
-    contentKind: "unknown",
+    contentKind: "website",
     externalId: null,
     canonicalUrl: url.toString(),
     authorName: null,
@@ -361,7 +376,10 @@ export function toEmbedUrl(
   externalId: string | null,
   sourceUrl?: string | null
 ): string | null {
-  if (contentKind === "unknown") return null;
+  if (contentKind === "unknown" || contentKind === "link") return null;
+
+  // 普通の Web ページは、そのページ自体を枠に入れる
+  if (contentKind === "website") return sourceUrl ?? null;
 
   if (contentKind === "account") {
     return toAccountEmbedUrl(platform, accountNameOf(externalId, sourceUrl));
@@ -441,6 +459,8 @@ function toAccountEmbedUrl(platform: Platform, userName: string | null): string 
  * ダイアログの大きさを決めるのに使う。
  */
 export function embedAspect(platform: Platform, contentKind: ContentKind): "portrait" | "landscape" {
+  // Web ページは横長の画面を前提に作られている
+  if (contentKind === "website" || contentKind === "link") return "landscape";
   // プロフィールは縦に伸びる
   if (contentKind === "account") return "portrait";
   if (contentKind === "reel" || contentKind === "short") return "portrait";

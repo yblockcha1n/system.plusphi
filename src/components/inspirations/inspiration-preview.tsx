@@ -44,6 +44,8 @@ export function InspirationPreview({
   // プロフィールとタイムラインは中で縦にスクロールする。縦横比で箱を作ると
   // 細長くなりすぎるので、画面の高さに対して決める。
   const isAccount = inspiration.contentKind === "account";
+  // Web ページは画面まるごとが中身なので、縦横比ではなく画面の高さで箱を決める
+  const isPage = inspiration.contentKind === "website" || inspiration.contentKind === "link";
   const heading =
     inspiration.title ??
     `${PLATFORM_LABELS[inspiration.platform]}の${CONTENT_KIND_LABELS[inspiration.contentKind]}`;
@@ -61,8 +63,10 @@ export function InspirationPreview({
           <DialogTitle className="break-words">{heading}</DialogTitle>
           <DialogDescription>
             {[
-              PLATFORM_LABELS[inspiration.platform],
-              inspiration.authorName && `@${inspiration.authorName}`,
+              // Web ページはサイト名だけで分かるので「その他」は出さない
+              isPage ? null : PLATFORM_LABELS[inspiration.platform],
+              inspiration.authorName &&
+                (isPage ? inspiration.authorName : `@${inspiration.authorName}`),
               inspiration.createdBy && `登録者 ${inspiration.createdBy}`,
             ]
               .filter(Boolean)
@@ -74,7 +78,7 @@ export function InspirationPreview({
           <div
             className={cn(
               "w-full overflow-hidden border bg-muted/30",
-              isAccount ? "h-[65svh]" : portrait ? "aspect-[9/16]" : "aspect-video"
+              isAccount || isPage ? "h-[70svh]" : portrait ? "aspect-[9/16]" : "aspect-video"
             )}
           >
             <iframe
@@ -123,7 +127,7 @@ export function InspirationPreview({
             className={buttonVariants({ variant: "outline" })}
           >
             <ExternalLinkIcon />
-            元の投稿を開く
+            {isPage ? "サイトを開く" : "元の投稿を開く"}
           </a>
           <DialogClose render={<Button type="button">閉じる</Button>} />
         </DialogFooter>
@@ -137,6 +141,10 @@ export function InspirationPreview({
  * 「対応していません」だけだと、こちらの不具合と区別が付かないため。
  */
 function unavailableReason(platform: Platform, contentKind: ContentKind): string {
+  if (contentKind === "link") {
+    return "このサイトは外部のページへの埋め込みを許可していません。下のリンクから開いてください。";
+  }
+
   if (contentKind !== "account") {
     return "この URL は埋め込みに対応していません。下のリンクから開いてください。";
   }

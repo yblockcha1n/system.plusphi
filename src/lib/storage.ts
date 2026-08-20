@@ -1,6 +1,6 @@
 import "server-only";
 import { supabase } from "@/lib/supabase";
-import { fetchExternal } from "@/lib/http";
+import { fetchPublic } from "@/lib/http";
 
 /**
  * Supabase Storage への保存・削除・読み出し。
@@ -59,7 +59,8 @@ export async function putObjectFromUrl(
   maxBytes: number
 ): Promise<string | null> {
   try {
-    const response = await fetchExternal(sourceUrl, {
+    // サムネの URL は外部のページが指定してくるものなので、宛先を確かめてから取る
+    const response = await fetchPublic(sourceUrl, {
       signal: AbortSignal.timeout(10_000),
     });
 

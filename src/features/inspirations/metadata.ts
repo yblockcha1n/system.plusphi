@@ -1,5 +1,5 @@
 import "server-only";
-import { fetchExternal, type ExternalResponse } from "@/lib/http";
+import { fetchExternal, fetchPublic, type ExternalResponse } from "@/lib/http";
 import { parseInspirationUrl, type ParsedUrl } from "@/features/inspirations/url";
 
 /**
@@ -14,6 +14,7 @@ import { parseInspirationUrl, type ParsedUrl } from "@/features/inspirations/url
  *  - TikTok    : 公式 oEmbed（無認証）
  *  - YouTube   : 公式 oEmbed（無認証）
  *  - X         : 公式 oEmbed（無認証・サムネは無い）
+ *  - その他     : ページの HTML から OGP を読む
  */
 
 export type FetchedMetadata = {
@@ -96,7 +97,7 @@ export async function fetchMetadata(parsed: ParsedUrl): Promise<FetchedMetadata>
       case "x":
         return await fromX(parsed);
       default:
-        return EMPTY;
+        return await fromWebsite(parsed);
     }
   } catch (cause) {
     console.error("[inspirations] メタ情報の取得に失敗しました", {
@@ -412,6 +413,187 @@ async function fromX(parsed: ParsedUrl): Promise<FetchedMetadata> {
     thumbnailUrl: null,
     resolved: null,
   };
+}
+
+
+/* ------------------------------ Web ページ ------------------------------ */
+
+/**
+ * 読み込む HTML の上限。meta は <head> にあるので頭だけあれば足りる。
+ * 相手のページの重さに引きずられないよう、途中で打ち切る。
+ */
+const MAX_HTML_BYTES = 512 * 1024;
+
+/**
+ * 既知のプラットフォーム以外の、普通の Web ページ。
+ *
+ * ここでの主役は OGP。実測では 18 サイト中 15 件が og:image を持っていた一方、
+ * iframe に入れさせてくれたのは 3 件しかない。つまり大半は「枠では見せられないが
+ * 絵と見出しは出せる」ので、そこを取りに行く。
+ *
+ * 取れなかったときは link に倒す（枠に入る前提で置いて、相手の拒否画面が出るより、
+ * 最初からカードとして見せる方がよい）。
+ */
+async function fromWebsite(parsed: ParsedUrl): Promise<FetchedMetadata> {
+  const asLink: FetchedMetadata = {
+    ...EMPTY,
+    resolved: { ...parsed, contentKind: "link" },
+  };
+
+  let response: ExternalResponse;
+
+  try {
+    // 貼られた URL は任意なので、社内向けの宛先に繋がないことを確かめてから叩く
+    response = await fetchPublic(parsed.canonicalUrl, {
+      headers: { "User-Agent": USER_AGENT },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch {
+    return asLink;
+  }
+
+  if (!response.ok) return asLink;
+
+  const framable = allowsFraming(response);
+  const html = await readHtml(response);
+
+  const image =
+    metaContent(html, "og:image") ??
+    metaContent(html, "og:image:url") ??
+    metaContent(html, "twitter:image") ??
+    metaContent(html, "twitter:image:src");
+
+  const title =
+    metaContent(html, "og:title") ??
+    metaContent(html, "twitter:title") ??
+    textOrNull(/<title[^>]*>([^<]*)<\/title>/i.exec(html)?.[1]);
+
+  return {
+    title,
+    // 見出しの下に出る添え字。サイト名が無ければドメインで十分伝わる。
+    authorName: siteName(html) ?? hostOf(parsed.canonicalUrl),
+    thumbnailUrl: image ? absoluteUrl(image, parsed.canonicalUrl) : null,
+    resolved: framable ? null : { ...parsed, contentKind: "link" },
+  };
+}
+
+/**
+ * iframe に入れさせてくれるか。
+ *
+ * X-Frame-Options があれば問答無用で入らない。CSP の frame-ancestors は
+ * 相手が許可した先の一覧なので、* が無いかぎりこちらは入れない
+ * （'self' や特定ドメインだけの指定が大半）。
+ */
+function allowsFraming(response: ExternalResponse): boolean {
+  if (response.headers.get("x-frame-options")) return false;
+
+  const policy = response.headers.get("content-security-policy") ?? "";
+  const ancestors = /frame-ancestors([^;]*)/i.exec(policy)?.[1];
+
+  if (ancestors === undefined) return true;
+
+  return ancestors.split(/\s+/).includes("*");
+}
+
+/** 上限まで読んで、文字コードを判定して文字列にする。 */
+async function readHtml(response: ExternalResponse): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return "";
+
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+
+  try {
+    while (size < MAX_HTML_BYTES) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      size += value.byteLength;
+    }
+  } catch {
+    // 途中で切れても、そこまでで meta が読めていれば十分
+  }
+
+  await reader.cancel().catch(() => {});
+
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return decodeHtml(bytes, response.headers.get("content-type"));
+}
+
+/**
+ * HTML を文字列にする。
+ *
+ * 日本語のサイトには今でも Shift_JIS が残っていて（実測: sony.jp）、
+ * UTF-8 として読むとタイトルが化ける。ヘッダの charset、無ければ本文の
+ * meta を見る。知らない名前だったときは UTF-8 に倒す。
+ */
+function decodeHtml(bytes: Uint8Array, contentType: string | null): string {
+  const head = new TextDecoder("latin1").decode(bytes.subarray(0, 4096));
+
+  const charset =
+    /charset=["']?([\w-]+)/i.exec(contentType ?? "")?.[1] ??
+    /<meta[^>]+charset=["']?([\w-]+)/i.exec(head)?.[1] ??
+    /<meta[^>]+content=["'][^"']*charset=([\w-]+)/i.exec(head)?.[1] ??
+    "utf-8";
+
+  try {
+    return new TextDecoder(charset).decode(bytes);
+  } catch {
+    return new TextDecoder("utf-8").decode(bytes);
+  }
+}
+
+/** meta タグの content を取る。属性の並び順は決まっていないので両方見る。 */
+function metaContent(html: string, key: string): string | null {
+  const patterns = [
+    new RegExp(`<meta[^>]+(?:property|name)=["']${key}["'][^>]*content=["']([^"']*)["']`, "i"),
+    new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]*(?:property|name)=["']${key}["']`, "i"),
+  ];
+
+  for (const pattern of patterns) {
+    const found = textOrNull(pattern.exec(html)?.[1]);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function textOrNull(value: string | undefined): string | null {
+  const trimmed = value ? decodeEntities(value).replace(/\s+/g, " ").trim() : "";
+  return trimmed === "" ? null : trimmed;
+}
+
+/** og:image は "/ogp.png" のような相対指定もあるので絶対 URL に直す。 */
+function absoluteUrl(value: string, base: string): string | null {
+  try {
+    return new URL(value, base).toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * サイト名。og:site_name にキャッチコピーごと入れているサイトがあるので
+ * （実測: advertimes.com は 60 字超の一文）、名前として長すぎるものは採らない。
+ */
+function siteName(html: string): string | null {
+  const name = metaContent(html, "og:site_name");
+  return name && name.length <= 40 ? name : null;
+}
+
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
 }
 
 /* ------------------------------ 短縮 URL ------------------------------ */

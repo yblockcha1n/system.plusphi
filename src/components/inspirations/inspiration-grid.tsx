@@ -4,6 +4,7 @@ import {
   AtSignIcon,
   EllipsisVerticalIcon,
   ExternalLinkIcon,
+  GlobeIcon,
   ImageOffIcon,
   PencilIcon,
   PlayIcon,
@@ -107,6 +108,9 @@ function InspirationCard({
   const { run, pending } = useApiMutation();
   const portrait = embedAspect(inspiration.platform, inspiration.contentKind) === "portrait";
   const isAccount = inspiration.contentKind === "account";
+  // 普通の Web ページ。動画でもアカウントでもないので、見せ方をいくつか変える。
+  const isPage = inspiration.contentKind === "website" || inspiration.contentKind === "link";
+  const host = hostOf(inspiration.url);
 
   const heading =
     inspiration.title ??
@@ -135,6 +139,14 @@ function InspirationCard({
             loading="lazy"
             className="size-full object-cover"
           />
+        ) : isPage ? (
+          // OGP を置いていないサイトも珍しくない。ドメインが出ていれば手掛かりになる。
+          <span className="flex size-full flex-col items-center justify-center gap-1.5 px-2 text-muted-foreground">
+            <GlobeIcon className="size-6" />
+            <span className="line-clamp-2 text-center text-[0.6875rem] break-all">
+              {host ?? "Web ページ"}
+            </span>
+          </span>
         ) : isAccount ? (
           // アカウントはプロフィール画像を取れないことが普通にある（Instagram の
           // 非公開など）。壊れた画像のように見せず、アカウントだと分かる形にする。
@@ -152,7 +164,7 @@ function InspirationCard({
         )}
 
         {/* 再生できるものだけ再生アイコンを重ねる。アカウントは動画ではないので付けない */}
-        {inspiration.embedUrl && !isAccount && (
+        {inspiration.embedUrl && !isAccount && !isPage && (
           <span
             className="absolute inset-0 flex items-center justify-center"
             aria-hidden
@@ -163,8 +175,9 @@ function InspirationCard({
           </span>
         )}
 
-        <span className="absolute top-1 left-1 bg-black/65 px-1.5 py-0.5 text-[0.625rem] font-medium text-white">
-          {PLATFORM_LABELS[inspiration.platform]}
+        <span className="absolute top-1 left-1 max-w-[85%] truncate bg-black/65 px-1.5 py-0.5 text-[0.625rem] font-medium text-white">
+          {/* 「その他」では何のサイトか分からないので、ドメインを出す */}
+          {isPage ? (host ?? "Web") : PLATFORM_LABELS[inspiration.platform]}
         </span>
       </button>
 
@@ -215,7 +228,8 @@ function InspirationCard({
 
         {inspiration.authorName && (
           <p className="truncate text-[0.625rem] text-muted-foreground">
-            @{inspiration.authorName}
+            {/* サイト名は人ではないので @ を付けない */}
+            {isPage ? inspiration.authorName : `@${inspiration.authorName}`}
           </p>
         )}
 
@@ -239,4 +253,13 @@ function InspirationCard({
       </div>
     </li>
   );
+}
+
+/** URL のドメイン。表示の手掛かりにするだけなので、読めなければ出さない。 */
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
 }

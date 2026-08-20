@@ -116,7 +116,9 @@ export async function refreshInspiration(inspirationId: string): Promise<ActionS
 
   const metadata = await fetchMetadata(analyzed);
 
-  if (!metadata.thumbnailUrl && !metadata.title && !metadata.authorName) {
+  const resolved = metadata.resolved ?? analyzed;
+
+  if (!metadata.thumbnailUrl && !metadata.title && !metadata.authorName && !metadata.resolved) {
     return {
       status: "error",
       message: "取得できませんでした。非公開の投稿か、削除されている可能性があります。",
@@ -129,6 +131,9 @@ export async function refreshInspiration(inspirationId: string): Promise<ActionS
       // 既に入っている値は消さない（手で直したものを上書きしないため）
       title: row.title ?? metadata.title,
       author_name: row.author_name ?? metadata.authorName,
+      // 見せ方は取り直す。Web ページが埋め込みを許可し始める／やめることがあり、
+      // 種類を持たずに登録された古い行もここで拾える。
+      content_kind: resolved.contentKind,
     })
     .eq("id", parsed.data);
 
