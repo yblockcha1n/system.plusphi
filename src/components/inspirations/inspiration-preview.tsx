@@ -6,6 +6,8 @@ import {
   CONTENT_KIND_LABELS,
   PLATFORM_LABELS,
   embedAspect,
+  type ContentKind,
+  type Platform,
 } from "@/features/inspirations/url";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -39,6 +41,9 @@ export function InspirationPreview({
   if (!inspiration) return null;
 
   const portrait = embedAspect(inspiration.platform, inspiration.contentKind) === "portrait";
+  // プロフィールとタイムラインは中で縦にスクロールする。縦横比で箱を作ると
+  // 細長くなりすぎるので、画面の高さに対して決める。
+  const isAccount = inspiration.contentKind === "account";
   const heading =
     inspiration.title ??
     `${PLATFORM_LABELS[inspiration.platform]}の${CONTENT_KIND_LABELS[inspiration.contentKind]}`;
@@ -69,7 +74,7 @@ export function InspirationPreview({
           <div
             className={cn(
               "w-full overflow-hidden border bg-muted/30",
-              portrait ? "aspect-[9/16]" : "aspect-video"
+              isAccount ? "h-[65svh]" : portrait ? "aspect-[9/16]" : "aspect-video"
             )}
           >
             <iframe
@@ -89,9 +94,7 @@ export function InspirationPreview({
           </div>
         ) : (
           <p className="border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
-            {inspiration.contentKind === "account"
-              ? "アカウントのページは埋め込みに対応していません。下のリンクから開いてください。"
-              : "この URL は埋め込みに対応していません。下のリンクから開いてください。"}
+            {unavailableReason(inspiration.platform, inspiration.contentKind)}
           </p>
         )}
 
@@ -127,4 +130,23 @@ export function InspirationPreview({
       </DialogContent>
     </Dialog>
   );
+}
+
+/**
+ * 埋め込めないときの文面。理由が分かるものは書き分ける。
+ * 「対応していません」だけだと、こちらの不具合と区別が付かないため。
+ */
+function unavailableReason(platform: Platform, contentKind: ContentKind): string {
+  if (contentKind !== "account") {
+    return "この URL は埋め込みに対応していません。下のリンクから開いてください。";
+  }
+
+  switch (platform) {
+    case "youtube":
+      return "YouTube はチャンネルの埋め込みを提供していません。下のリンクから開いてください。";
+    case "x":
+      return "X は未ログインでのプロフィール表示を強く制限しているため、埋め込むと高い確率で表示できません。下のリンクから開いてください。";
+    default:
+      return "このアカウントは埋め込みに対応していません。下のリンクから開いてください。";
+  }
 }

@@ -47,12 +47,15 @@ const TIMEOUT_MS = 8000;
  */
 const USER_AGENT = "Mozilla/5.0 (compatible; plusphi-knowledge/1.0)";
 
-async function get(url: string): Promise<ExternalResponse | null> {
+async function get(
+  url: string,
+  headers: Record<string, string> = {}
+): Promise<ExternalResponse | null> {
   try {
     const response = await fetchExternal(url, {
       // Accept-Language は送らない。付けると Instagram が言語ごとに違う文面の
       // HTML を返し、抽出が言語に左右されてしまう（既定の英語版に固定する）。
-      headers: { "User-Agent": USER_AGENT },
+      headers: { "User-Agent": USER_AGENT, ...headers },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
 
@@ -64,6 +67,24 @@ async function get(url: string): Promise<ExternalResponse | null> {
 }
 
 export async function fetchMetadata(parsed: ParsedUrl): Promise<FetchedMetadata> {
+  /*
+   * アカウントは投稿とは別の口を使う。
+   *
+   * 投稿用の口にユーザー名を渡すと「それらしい別物」が返ってしまう（Instagram は
+   * /p/{ユーザー名}/embed/ に 200 と無関係な投稿画像を返す）ため、ここで分ける。
+   */
+  if (parsed.contentKind === "account") {
+    try {
+      return await fromAccount(parsed);
+    } catch (cause) {
+      console.error("[inspirations] アカウント情報の取得に失敗しました", {
+        url: parsed.canonicalUrl,
+        message: cause instanceof Error ? cause.message : String(cause),
+      });
+      return { ...EMPTY, authorName: parsed.authorName };
+    }
+  }
+
   try {
     switch (parsed.platform) {
       case "instagram":
@@ -180,6 +201,128 @@ async function expandInstagramShare(shareUrl: string): Promise<ParsedUrl | null>
 
   const parsed = parseInspirationUrl(decodeEntities(canonical));
   return parsed?.externalId ? parsed : null;
+}
+
+/* ------------------------------ アカウント ------------------------------ */
+
+/**
+ * プロフィールのメタ情報。
+ *
+ * サムネにはプロフィール画像を使う。アカウントを一枚の絵で表せるものは他に無く、
+ * 直近の投稿を代表させると「投稿の登録」と見分けが付かなくなるため。
+ *
+ * title には表示名（例: 犬人間のゆめ。）、authorName にはユーザー名（例:
+ * inuningennoyume）を入れる。一覧では title が見出し、authorName が @ 付きの
+ * 添え字として出るので、この振り分けが自然に読める。
+ *
+ * YouTube と X は無認証で読める口が無い（YouTube のチャンネルは oEmbed が 404、
+ * X のプロフィールは syndication が強く絞られている）ので何も取らない。
+ */
+async function fromAccount(parsed: ParsedUrl): Promise<FetchedMetadata> {
+  const userName = parsed.externalId ?? parsed.authorName;
+
+  if (!userName) return { ...EMPTY, authorName: parsed.authorName };
+
+  switch (parsed.platform) {
+    case "tiktok":
+      return await tiktokAccount(userName, parsed.canonicalUrl);
+    case "instagram":
+      return await instagramAccount(userName);
+    default:
+      return { ...EMPTY, authorName: parsed.authorName };
+  }
+}
+
+/**
+ * TikTok のプロフィール。
+ *
+ * 表示名は oEmbed で取れる。投稿と同じ口にプロフィール URL を渡すと
+ * embed_type: "profile" として返ってくる。ただし画像は返さないので、
+ * プロフィール画像は埋め込みページの HTML から拾う。
+ */
+async function tiktokAccount(userName: string, canonicalUrl: string): Promise<FetchedMetadata> {
+  const [data, avatar] = await Promise.all([
+    oembed(`https://www.tiktok.com/oembed?url=${encodeURIComponent(canonicalUrl)}`),
+    tiktokAvatar(userName),
+  ]);
+
+  return {
+    title: text(data?.author_name),
+    authorName: userName,
+    thumbnailUrl: avatar,
+    resolved: null,
+  };
+}
+
+/**
+ * TikTok のプロフィール画像。
+ *
+ * 埋め込みページの HTML に入っている。100x100 で、寸法が署名に含まれているため
+ * 大きい版に書き換えると 403 になる（実測）。URL 自体にも期限があるが、
+ * 呼び出し側が受け取った直後に自分の Storage へ複製するので問題にならない。
+ */
+async function tiktokAvatar(userName: string): Promise<string | null> {
+  const response = await get(`https://www.tiktok.com/embed/@${encodeURIComponent(userName)}`);
+  if (!response) return null;
+
+  const html = await response.text();
+  const match = /"(https:(?:\\?\/){2}[^"]*?avt[^"]*?)"/.exec(html);
+  if (!match) return null;
+
+  // HTML に埋まった JSON なので "\/" と "&amp;" の両方が混ざっている
+  return decodeEntities(match[1].replace(/\\+\//g, "/"));
+}
+
+/**
+ * instagram.com 自身がプロフィール描画に使っているアプリ ID。
+ * 文書化された API ではないので、失敗しても止めない前提で使う。
+ */
+const INSTAGRAM_APP_ID = "936619743392459";
+
+/**
+ * Instagram のプロフィール。
+ *
+ * プロフィールの /embed/ は投稿の /embed/ と違って画像を含む版と含まない版が
+ * あり、同じ URL でも返るものが一定しない（実測）。そのため画像はここでは
+ * 使わず、instagram.com が自分のプロフィール画面で叩いている口を同じヘッダで
+ * 呼ぶ。非公開・年齢制限などで 400 や 404 が返ることがあり、実測でも
+ * 7 件中 4 件しか取れていない。取れなければサムネ無しで登録する。
+ */
+type InstagramProfile = {
+  full_name?: unknown;
+  profile_pic_url?: unknown;
+  profile_pic_url_hd?: unknown;
+};
+
+async function instagramAccount(userName: string): Promise<FetchedMetadata> {
+  const response = await get(
+    `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(userName)}`,
+    {
+      "x-ig-app-id": INSTAGRAM_APP_ID,
+      // これが無いと "SecFetch Policy violation" で 400 になる
+      "Sec-Fetch-Site": "same-origin",
+      "Sec-Fetch-Mode": "cors",
+      "Sec-Fetch-Dest": "empty",
+      Referer: `https://www.instagram.com/${encodeURIComponent(userName)}/`,
+    }
+  );
+
+  if (!response) return { ...EMPTY, authorName: userName };
+
+  let user: InstagramProfile | null = null;
+
+  try {
+    user = ((await response.json()) as { data?: { user?: InstagramProfile } })?.data?.user ?? null;
+  } catch {
+    return { ...EMPTY, authorName: userName };
+  }
+
+  return {
+    title: text(user?.full_name),
+    authorName: userName,
+    thumbnailUrl: text(user?.profile_pic_url_hd) ?? text(user?.profile_pic_url),
+    resolved: null,
+  };
 }
 
 /* -------------------------------- oEmbed -------------------------------- */

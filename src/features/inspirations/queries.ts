@@ -124,7 +124,9 @@ export async function getInspirations(
       authorName: row.author_name,
       note: row.note,
       thumbnailUrl: row.thumbnail_path ? (signed.get(row.thumbnail_path) ?? null) : null,
-      embedUrl: toEmbedUrl(platform, contentKind, row.external_id),
+      // url を渡すのはアカウントのため。ユーザー名は external_id ではなく
+      // URL から読み直す（古い行は external_id が空なので）。
+      embedUrl: toEmbedUrl(platform, contentKind, row.external_id, row.url),
       tagIds,
       tagNames: tagIds.map((id) => tagNames.get(id)).filter((name): name is string => Boolean(name)),
       createdBy: displayName(row.created_by),

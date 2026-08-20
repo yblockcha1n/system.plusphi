@@ -178,9 +178,10 @@ function parseInstagram(host: string, parts: string[], url: URL): ParsedUrl | nu
     return clean("post", `/p/${parts[2]}/`, parts[2], first);
   }
 
-  // /{username}/ → アカウント。埋め込みは提供されていないのでリンクとして扱う。
+  // /{username}/ → アカウント。プロフィールにも埋め込みがある（下の toEmbedUrl）。
+  // 識別子はユーザー名なので externalId に入れる。
   if (first && parts.length === 1 && !INSTAGRAM_RESERVED.has(first)) {
-    return clean("account", `/${first}/`, null, first);
+    return clean("account", `/${first}/`, first, first);
   }
 
   // /share/... はアプリが配る中継用の URL。この時点では投稿 ID が分からないので
@@ -230,12 +231,12 @@ function parseTikTok(host: string, parts: string[], url: URL): ParsedUrl | null 
     };
   }
 
-  // /@{user} → アカウント
+  // /@{user} → アカウント。識別子はユーザー名。
   if (first?.startsWith("@") && parts.length === 1) {
     return {
       platform: "tiktok",
       contentKind: "account",
-      externalId: null,
+      externalId: first.slice(1),
       canonicalUrl: `https://www.tiktok.com/${first}`,
       authorName: first.slice(1),
     };
@@ -283,12 +284,13 @@ function parseYouTube(host: string, parts: string[], url: URL): ParsedUrl | null
   if (first === "shorts" && second) return video(second, "short");
   if ((first === "embed" || first === "live") && second) return video(second, "video");
 
-  // /@{handle} → チャンネル
+  // /@{handle} → チャンネル。YouTube はチャンネルの埋め込みを提供していないので
+  // 識別子だけ持ち、表示はリンクになる（toEmbedUrl 参照）。
   if (first?.startsWith("@") && parts.length === 1) {
     return {
       platform: "youtube",
       contentKind: "account",
-      externalId: null,
+      externalId: first.slice(1),
       canonicalUrl: `https://www.youtube.com/${first}`,
       authorName: first.slice(1),
     };
@@ -323,12 +325,12 @@ function parseX(host: string, parts: string[], url: URL): ParsedUrl | null {
     };
   }
 
-  // /{user} → アカウント
+  // /{user} → アカウント。識別子はユーザー名。
   if (first && parts.length === 1) {
     return {
       platform: "x",
       contentKind: "account",
-      externalId: null,
+      externalId: first,
       canonicalUrl: `https://x.com/${first}`,
       authorName: first,
     };
@@ -348,15 +350,24 @@ function parseX(host: string, parts: string[], url: URL): ParsedUrl | null {
 /**
  * iframe に入れる URL。埋め込めないものは null。
  *
- * 4 種類とも X-Frame-Options を返さないことを実測で確認している
- * （アカウントのページは埋め込みが提供されていないので対象外）。
+ * 投稿は X-Frame-Options も CSP の frame-ancestors も付いていないことを実測で
+ * 確認している。アカウントは Instagram と TikTok だけ（toAccountEmbedUrl 参照）。
+ *
+ * @param sourceUrl 保存してある元の URL。アカウントのユーザー名はここから読み直す。
  */
 export function toEmbedUrl(
   platform: Platform,
   contentKind: ContentKind,
-  externalId: string | null
+  externalId: string | null,
+  sourceUrl?: string | null
 ): string | null {
-  if (!externalId || contentKind === "account" || contentKind === "unknown") return null;
+  if (contentKind === "unknown") return null;
+
+  if (contentKind === "account") {
+    return toAccountEmbedUrl(platform, accountNameOf(externalId, sourceUrl));
+  }
+
+  if (!externalId) return null;
 
   switch (platform) {
     case "instagram":
@@ -375,10 +386,63 @@ export function toEmbedUrl(
 }
 
 /**
+ * 埋め込みに使うアカウント名を決める。
+ *
+ * URL から読み直すのが基本で、externalId は控え。アカウントの識別子を
+ * externalId に入れるようにする前の行は空になっており、そこを投稿者名で
+ * 埋めると「渡邉」のような表示名で URL を組んでしまう（Instagram も TikTok も
+ * 存在しないユーザーとして「削除された可能性があります」を出す）。
+ * URL は必ず保存されているので、そちらの方が確実。
+ */
+function accountNameOf(externalId: string | null, sourceUrl?: string | null): string | null {
+  if (sourceUrl) {
+    const parsed = parseInspirationUrl(sourceUrl);
+    if (parsed?.contentKind === "account" && parsed.externalId) return parsed.externalId;
+  }
+
+  return externalId;
+}
+
+/** ユーザー名として通る文字だけか。表示名を URL に混ぜてしまう事故を止める。 */
+const USER_NAME = /^[A-Za-z0-9._-]{1,30}$/;
+
+/**
+ * プロフィールの埋め込み URL。
+ *
+ * 提供の仕方がプラットフォームごとに違うので、実際に叩いて確かめたものだけを使う。
+ *  - Instagram : 投稿と同じ /embed/ がユーザー名でも通る
+ *  - TikTok    : 投稿の /embed/v2/{id} とは別で、/embed/@{user} を使う
+ *                （/embed/v2/@{user} は 400 になる）
+ *  - YouTube   : チャンネルの埋め込みは提供されていないのでリンクのまま
+ *  - X         : 埋め込まない。widgets.js が使うタイムラインの口
+ *    （syndication.twitter.com/srv/timeline-profile/…）は未ログインだと
+ *    x-rate-limit-limit: 30 で絞られており、プロフィール 1 枚でその大半を使う。
+ *    実測でも 4 回中 3 回が 429（本文は "Rate limit exceeded" の 20 バイトだけ）で、
+ *    社内の共有回線なら即座に尽きる。たまに映る枠を出すより、リンクの方が良い。
+ */
+function toAccountEmbedUrl(platform: Platform, userName: string | null): string | null {
+  if (!userName) return null;
+
+  const name = userName.replace(/^@/, "");
+  if (!USER_NAME.test(name)) return null;
+
+  switch (platform) {
+    case "instagram":
+      return `https://www.instagram.com/${name}/embed/`;
+    case "tiktok":
+      return `https://www.tiktok.com/embed/@${name}`;
+    default:
+      return null;
+  }
+}
+
+/**
  * 埋め込みの縦横比。リール・ショート・TikTok は縦長、それ以外は横長。
  * ダイアログの大きさを決めるのに使う。
  */
 export function embedAspect(platform: Platform, contentKind: ContentKind): "portrait" | "landscape" {
+  // プロフィールは縦に伸びる
+  if (contentKind === "account") return "portrait";
   if (contentKind === "reel" || contentKind === "short") return "portrait";
   if (platform === "tiktok") return "portrait";
   if (platform === "instagram") return "portrait";

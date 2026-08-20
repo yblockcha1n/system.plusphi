@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AtSignIcon,
   EllipsisVerticalIcon,
   ExternalLinkIcon,
   ImageOffIcon,
@@ -105,6 +106,7 @@ function InspirationCard({
 }) {
   const { run, pending } = useApiMutation();
   const portrait = embedAspect(inspiration.platform, inspiration.contentKind) === "portrait";
+  const isAccount = inspiration.contentKind === "account";
 
   const heading =
     inspiration.title ??
@@ -133,6 +135,15 @@ function InspirationCard({
             loading="lazy"
             className="size-full object-cover"
           />
+        ) : isAccount ? (
+          // アカウントはプロフィール画像を取れないことが普通にある（Instagram の
+          // 非公開など）。壊れた画像のように見せず、アカウントだと分かる形にする。
+          <span className="flex size-full flex-col items-center justify-center gap-1.5 px-2 text-muted-foreground">
+            <AtSignIcon className="size-6" />
+            <span className="line-clamp-2 text-center text-[0.6875rem] break-all">
+              {inspiration.authorName ?? PLATFORM_LABELS[inspiration.platform]}
+            </span>
+          </span>
         ) : (
           <span className="flex size-full flex-col items-center justify-center gap-1 text-muted-foreground">
             <ImageOffIcon className="size-5" />
@@ -140,8 +151,8 @@ function InspirationCard({
           </span>
         )}
 
-        {/* 再生できるものだけ再生アイコンを重ねる */}
-        {inspiration.embedUrl && (
+        {/* 再生できるものだけ再生アイコンを重ねる。アカウントは動画ではないので付けない */}
+        {inspiration.embedUrl && !isAccount && (
           <span
             className="absolute inset-0 flex items-center justify-center"
             aria-hidden
