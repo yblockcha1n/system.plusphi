@@ -20,6 +20,7 @@
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "heic-to": "^1.5.2",
     "jose": "^6.2.3",
     "jp-holidays": "^1.0.3",
     "lucide-react": "^1.24.0",
